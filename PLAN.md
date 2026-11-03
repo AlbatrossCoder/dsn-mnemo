@@ -267,9 +267,11 @@ for await (const chunk of ctx.llm.stream({
 
 实现备注（真机验收期间确认）：
 
-- **装载失败的真正根因是 `package.json` 的 UTF-8 BOM**。DSH 的包装载校验会读取 `package.json` 判断组合包/要求；带 BOM 时 JSON 解析失败，条目被**静默禁用**（错误只写桌面端 console）。修复后同一份 patch 立即装载成功。PowerShell 5.1 的 `Set-Content -Encoding utf8` 会写 BOM，改清单必须用 Node 或支持无 BOM 的编辑器。
-- `recall` 的输出 schema 与返回对象不一致（返回带 `id`，schema 未声明）会触发 `additionalProperties: false` 校验错误；已在 schema 中声明 `id` 并加单测锁定返回字段集合。
-- 本插件现在同时是**可安装的组合包**：`cordis.patch.yml` + `package.json` 的 `dsh.bundle.patch`；用临时 profile（`dsh.profile.bundles: ["@deepseek-ai/dsh-base", "dsn-mnemo"]`）`--dump-config` 已验证能组合出 `- id: dsn-mnemo` 行。
+- **HMR 的模块命名空间缓存按插件名而不是 URL**：把 entry 的 `name` 改成 `file://.../index.js?v=N` 只会更新该条目的配置，**不会重新导入代码**（实测：`?v=11/12` 的配置生效了，但运行的仍是旧构建，新增的诊断日志始终不出现）。要换代码只能重启 DSH，或者换一个插件名（会破坏 entry 身份）。
+- **空闲计时链路已在真机验证**：把 `diaryIdleMinutes` 临时设为 `0` 后，`turn/end` 结束几秒内 `sessions.diary_judged_at` 自动前进（不必手动调用），说明「定时器 → flush」在桌面端成立；flush 内部的真实模型调用与写入此前已由 `diary_consolidate` 与 `diary_write` 分别验证。
+- `package.json` 必须是**无 BOM 的 UTF-8**：带 BOM 时 DSH 读取包清单失败并把插件行静默禁用（桌面端表现为完全不加载）。
+- `recall` 的输出 schema 与返回对象不一致（返回带 `id`，schema 未声明）会触发 `additionalProperties: false` 校验错误；已在 schema 中声明 `id`，并用 DSH 自带的 `validateJsonSchemaValue` 锁定返回字段集合。
+- 本插件同时是**可安装的组合包**：`cordis.patch.yml` + `package.json` 的 `dsh.bundle.patch`；用临时 profile（`dsh.profile.bundles: ["@deepseek-ai/dsh-base", "dsn-mnemo"]`）`--dump-config` 已验证能组合出 `- id: dsn-mnemo` 行，市场索引样例也能通过 DSH 的 `parseMarketIndex` 校验。
 
 实现备注（P6 期间确认）：
 
