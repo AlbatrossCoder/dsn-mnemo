@@ -78,7 +78,11 @@ export function rankDiaries(
   now = new Date(),
   subject?: SubjectRef,
 ): RecallHit[] {
-  return rankDiaryHits(searchDiaries(db, query, limit * 2, 'and', subject), limit, now)
+  const hits = searchDiaries(db, query, limit * 2, 'and', subject).filter(
+    // `secret` never appears in a group, even when the query matches.
+    (hit) => subject?.kind !== 'group' || hit.visibility !== 'secret',
+  )
+  return rankDiaryHits(hits, limit, now)
 }
 
 /**
