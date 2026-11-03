@@ -19,10 +19,20 @@ export interface MessageInput {
   readonly turn: number
   readonly role: MessageRole
   readonly messageId?: string | null
+  /** Who spoke; null/absent for the assistant and for 1:1 local prompts. */
+  readonly speakerId?: string | null
+  /** True when the message addressed the assistant (@ / reply / mention). */
+  readonly addressed?: boolean
   /** Flattened, human-searchable text. */
   readonly content: string
   /** Lossless JSON of the original message object. */
   readonly raw: string
+}
+
+/** Conversation shape a session belongs to. */
+export interface SessionIdentity {
+  readonly kind: 'dm' | 'group'
+  readonly audienceId: string
 }
 
 export interface MessageHit {
@@ -31,6 +41,7 @@ export interface MessageHit {
   readonly seq: number
   readonly turn: number
   readonly role: MessageRole
+  readonly speakerId: string | null
   readonly content: string
   readonly createdAt: string
   /** Lower (more negative) is a better BM25 match. */
@@ -38,22 +49,39 @@ export interface MessageHit {
 }
 
 /** Create the session row if needed and refresh its activity bookkeeping. */
-export function touchSession(db: DatabaseSync, sessionId: string, turn: number): void {
+export function touchSession(
+  db: DatabaseSync,
+  sessionId: string,
+  turn: number,
+  identity?: SessionIdentity,
+): void {
+  if (identity === undefined) {
+    db.prepare(
+      `insert into sessions(id, last_active_at, turn_count)
+       values (?, datetime('now'), ?)
+       on conflict(id) do update set
+         last_active_at = excluded.last_active_at,
+         turn_count = max(sessions.turn_count, excluded.turn_count)`,
+    ).run(sessionId, turn)
+    return
+  }
   db.prepare(
-    `insert into sessions(id, last_active_at, turn_count)
-     values (?, datetime('now'), ?)
+    `insert into sessions(id, last_active_at, turn_count, kind, audience_id)
+     values (?, datetime('now'), ?, ?, ?)
      on conflict(id) do update set
        last_active_at = excluded.last_active_at,
-       turn_count = max(sessions.turn_count, excluded.turn_count)`,
-  ).run(sessionId, turn)
+       turn_count = max(sessions.turn_count, excluded.turn_count),
+       kind = excluded.kind,
+       audience_id = excluded.audience_id`,
+  ).run(sessionId, turn, identity.kind, identity.audienceId)
 }
 
 /** Insert one message; returns `false` when `(session_id, seq)` already existed. */
 export function insertMessage(db: DatabaseSync, input: MessageInput): boolean {
   const result = db
     .prepare(
-      `insert or ignore into messages(session_id, seq, turn, role, message_id, content, content_seg, raw)
-       values (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `insert or ignore into messages(session_id, seq, turn, role, message_id, speaker_id, addressed, content, content_seg, raw)
+       values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       input.sessionId,
@@ -61,6 +89,8 @@ export function insertMessage(db: DatabaseSync, input: MessageInput): boolean {
       input.turn,
       input.role,
       input.messageId ?? null,
+      input.speakerId ?? null,
+      input.addressed === true ? 1 : 0,
       input.content,
       segment(input.content),
       input.raw,
@@ -110,7 +140,7 @@ export function searchMessages(db: DatabaseSync, query: string, limit = 5): Mess
 function searchMessagesByMatch(db: DatabaseSync, match: string, limit: number): MessageHit[] {
   const rows = db
     .prepare(
-      `select m.id, m.session_id, m.seq, m.turn, m.role, m.content, m.created_at,
+      `select m.id, m.session_id, m.seq, m.turn, m.role, m.speaker_id, m.content, m.created_at,
               bm25(messages_fts) as rank
          from messages_fts
          join messages m on m.id = messages_fts.rowid
@@ -129,7 +159,7 @@ function searchMessagesByCharacters(db: DatabaseSync, query: string, limit: numb
   const where = chars.map(() => 'content like ?').join(' or ')
   const rows = db
     .prepare(
-      `select id, session_id, seq, turn, role, content, created_at, 0 as rank
+      `select id, session_id, seq, turn, role, speaker_id, content, created_at, 0 as rank
          from messages
         where ${where}
         order by created_at desc
@@ -151,6 +181,7 @@ interface MessageRow {
   seq: number
   turn: number
   role: MessageRole
+  speaker_id: string | null
   content: string
   created_at: string
   rank: number
@@ -163,6 +194,7 @@ function toHit(row: MessageRow): MessageHit {
     seq: row.seq,
     turn: row.turn,
     role: row.role,
+    speakerId: row.speaker_id,
     content: row.content,
     createdAt: row.created_at,
     rank: row.rank,
@@ -173,7 +205,7 @@ function toHit(row: MessageRow): MessageHit {
 export function listRecentMessages(db: DatabaseSync, sessionId: string, limit = 20): MessageHit[] {
   const rows = db
     .prepare(
-      `select id, session_id, seq, turn, role, content, created_at, 0 as rank
+      `select id, session_id, seq, turn, role, speaker_id, content, created_at, 0 as rank
          from messages
         where session_id = ?
         order by seq desc
@@ -185,6 +217,7 @@ export function listRecentMessages(db: DatabaseSync, sessionId: string, limit = 
     seq: number
     turn: number
     role: MessageRole
+    speaker_id: string | null
     content: string
     created_at: string
     rank: number
@@ -196,6 +229,7 @@ export function listRecentMessages(db: DatabaseSync, sessionId: string, limit = 
     seq: row.seq,
     turn: row.turn,
     role: row.role,
+    speakerId: row.speaker_id,
     content: row.content,
     createdAt: row.created_at,
     rank: row.rank,

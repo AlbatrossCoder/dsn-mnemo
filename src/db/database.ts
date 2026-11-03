@@ -91,6 +91,8 @@ export function rebuildIndexes(db: DatabaseSync): void {
     db.exec('insert into messages_fts(rowid, content) select id, content_seg from messages')
     db.exec("insert into diaries_fts(diaries_fts) values ('delete-all')")
     db.exec('insert into diaries_fts(rowid, content) select id, content_seg from diaries')
+    db.exec("insert into memory_points_fts(memory_points_fts) values ('delete-all')")
+    db.exec('insert into memory_points_fts(rowid, text) select id, content_seg from memory_points')
     db.exec('commit')
   } catch (error) {
     db.exec('rollback')

@@ -112,8 +112,87 @@ create table diary_revisions (
 create index idx_diary_revisions_diary on diary_revisions(diary_id);
 `
 
+/**
+ * V2: memory subjects.
+ *
+ * A memory belongs to a `(subject_kind, subject_id)` pair — a person for 1:1
+ * chats or a group for group chats. `messages` gains per-message speaker and
+ * "was the assistant addressed" so group logs can be filtered without waking
+ * the model; `memory_points` is the short-term (7 day) layer; anchors gain
+ * ownership, recurrence, and handled/surfaced state for the "missed" rule.
+ *
+ * Existing rows are backfilled onto the local desktop user (`local`).
+ */
+const V2 = `
+alter table sessions add column kind text not null default 'dm';
+alter table sessions add column audience_id text;
+
+alter table messages add column speaker_id text;
+alter table messages add column addressed integer not null default 0;
+
+alter table diaries add column subject_kind text;
+alter table diaries add column subject_id text;
+alter table diaries add column visibility text not null default 'private';
+
+alter table anchors add column subject_kind text;
+alter table anchors add column subject_id text;
+alter table anchors add column repeat text not null default 'none';
+alter table anchors add column handled_at text;
+
+create table memory_points (
+  id integer primary key autoincrement,
+  subject_kind text not null,
+  subject_id text not null,
+  kind text not null default 'topic',
+  text text not null,
+  content_seg text not null,
+  importance real not null default 0.5,
+  source text not null default 'diary',
+  created_at text not null default (datetime('now')),
+  expires_at text not null
+);
+create index idx_memory_points_subject on memory_points(subject_kind, subject_id, created_at desc);
+create index idx_memory_points_expiry on memory_points(expires_at);
+
+create virtual table memory_points_fts using fts5(
+  text,
+  content = 'memory_points',
+  content_rowid = 'id',
+  tokenize = 'unicode61'
+);
+create trigger memory_points_ai after insert on memory_points begin
+  insert into memory_points_fts(rowid, text) values (new.id, new.content_seg);
+end;
+create trigger memory_points_ad after delete on memory_points begin
+  insert into memory_points_fts(memory_points_fts, rowid, text) values ('delete', old.id, old.content_seg);
+end;
+create trigger memory_points_au after update of content_seg on memory_points begin
+  insert into memory_points_fts(memory_points_fts, rowid, text) values ('delete', old.id, old.content_seg);
+  insert into memory_points_fts(rowid, text) values (new.id, new.content_seg);
+end;
+
+create table persons (
+  user_id text primary key,
+  display_name text,
+  relationship text not null default 'stranger',
+  public_note text,
+  first_seen text not null default (datetime('now')),
+  last_seen text not null default (datetime('now'))
+);
+
+create index idx_diaries_subject on diaries(subject_kind, subject_id, created_at desc);
+create index idx_anchors_subject on anchors(subject_kind, subject_id, target_date);
+
+update sessions set audience_id = 'local' where audience_id is null;
+update diaries set
+  subject_kind = 'user',
+  subject_id = coalesce((select audience_id from sessions s where s.id = diaries.session_id), 'local')
+where subject_kind is null;
+update anchors set subject_kind = 'user', subject_id = 'local' where subject_kind is null;
+`
+
 /** Every migration in application order. Append only; never edit a released entry. */
-export const MIGRATIONS: readonly string[] = [V1]
+export const MIGRATIONS: readonly string[] = [V1, V2]
 
 /** Highest schema version this build understands. */
 export const SCHEMA_VERSION = MIGRATIONS.length

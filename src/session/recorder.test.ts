@@ -52,6 +52,62 @@ function toolResult(text: string): unknown {
   }
 }
 
+test('qq group messages record speaker, audience, and addressed', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(
+      session,
+      makeEvent('user/message', 1, {
+        id: 'm1',
+        role: 'user',
+        content: [{ type: 'text', text: '@鲸鱼娘 在吗' }],
+        source: { kind: 'qq', userId: '10001', groupId: '20002', mentioned: true },
+      }),
+    )
+    const row = db.prepare('select speaker_id, addressed from messages').get() as {
+      speaker_id: string
+      addressed: number
+    }
+    assert.equal(row.speaker_id, '10001')
+    assert.equal(row.addressed, 1)
+    const sessionRow = db.prepare('select kind, audience_id from sessions where id = ?').get('s-recorder') as {
+      kind: string
+      audience_id: string
+    }
+    assert.equal(sessionRow.kind, 'group')
+    assert.equal(sessionRow.audience_id, '20002')
+  } finally {
+    db.close()
+  }
+})
+
+test('qq private messages become a dm subject', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(
+      session,
+      makeEvent('user/message', 1, {
+        id: 'm1',
+        role: 'user',
+        content: [{ type: 'text', text: '在吗' }],
+        source: { kind: 'qq', userId: '10001' },
+      }),
+    )
+    const sessionRow = db.prepare('select kind, audience_id from sessions where id = ?').get('s-recorder') as {
+      kind: string
+      audience_id: string
+    }
+    assert.equal(sessionRow.kind, 'dm')
+    assert.equal(sessionRow.audience_id, '10001')
+  } finally {
+    db.close()
+  }
+})
+
 test('reasoning is stripped from the stored raw JSON by default', () => {
   const db = openDatabase(':memory:')
   try {

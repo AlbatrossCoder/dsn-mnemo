@@ -24,7 +24,12 @@ interface MessageShape {
   readonly role?: unknown
   readonly id?: unknown
   readonly content?: unknown
-  readonly source?: { readonly kind?: unknown }
+  readonly source?: {
+    readonly kind?: unknown
+    readonly userId?: unknown
+    readonly groupId?: unknown
+    readonly mentioned?: unknown
+  }
 }
 
 function asMessage(value: unknown): MessageShape | undefined {
@@ -44,10 +49,35 @@ function roleOf(message: MessageShape): MessageRole | undefined {
 
 /**
  * User-role messages also carry injected context (time, goal rounds, runtime
- * snapshots, skill catalogs). Only `source.kind === 'user'` is a human prompt.
+ * snapshots, skill catalogs). Only a direct human prompt — the local `user`
+ * source, or a `qq` message from the channel — is chat.
  */
 function isHumanPrompt(message: MessageShape): boolean {
-  return message.source?.kind === 'user'
+  return message.source?.kind === 'user' || message.source?.kind === 'qq'
+}
+
+/** Conversation identity carried by a channel message. */
+export interface MessageIdentity {
+  readonly kind: 'dm' | 'group'
+  readonly audienceId: string
+  readonly speakerId: string | null
+  readonly addressed: boolean
+}
+
+function identityOf(message: MessageShape): MessageIdentity {
+  const source = message.source
+  if (source?.kind === 'qq') {
+    const userId = typeof source.userId === 'string' ? source.userId : null
+    const groupId = typeof source.groupId === 'string' ? source.groupId : null
+    if (groupId !== null) {
+      return { kind: 'group', audienceId: groupId, speakerId: userId, addressed: source.mentioned === true }
+    }
+    if (userId !== null) {
+      return { kind: 'dm', audienceId: userId, speakerId: userId, addressed: true }
+    }
+  }
+  // The local desktop user: one implicit person.
+  return { kind: 'dm', audienceId: 'local', speakerId: null, addressed: true }
 }
 
 /** Options for what L0 keeps beyond the searchable text. */
@@ -100,8 +130,14 @@ export class SessionRecorder {
           const role = roleOf(message)
           if (role === undefined) return
           if (role === 'user' && !isHumanPrompt(message)) return
+          const identity = role === 'user' ? identityOf(message) : undefined
           const turn = payload.turn ?? this.turns.get(session.id) ?? 0
-          touchSession(this.db, session.id, turn)
+          touchSession(
+            this.db,
+            session.id,
+            turn,
+            identity === undefined ? undefined : { kind: identity.kind, audienceId: identity.audienceId },
+          )
           const content = flattenContent(Array.isArray(message.content) ? message.content : [])
           // A pure tool-call step has no visible text; nothing was said.
           if (content.length === 0) return
@@ -112,6 +148,8 @@ export class SessionRecorder {
             turn,
             role,
             messageId: typeof message.id === 'string' ? message.id : null,
+            speakerId: identity?.speakerId ?? null,
+            addressed: identity?.addressed === true,
             content,
             raw: JSON.stringify(stored),
           })
