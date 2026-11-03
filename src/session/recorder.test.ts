@@ -1,0 +1,142 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { openDatabase } from '../db/database.js'
+import { SessionRecorder } from './recorder.js'
+import { countMessages, searchMessages } from '../store/message-store.js'
+
+const session = { id: 's-recorder' }
+
+function makeEvent(type: string, seq: number, data: unknown): SessionEvent {
+  return { type, seq, time: 1_700_000_000_000, data } as unknown as SessionEvent
+}
+
+function userMessage(text: string): unknown {
+  return {
+    role: 'user',
+    id: 'msg-user',
+    content: [{ type: 'text', text }],
+    source: { kind: 'user' },
+  }
+}
+
+function assistantMessage(text: string): unknown {
+  return {
+    turn: 1,
+    step: 0,
+    message: {
+      role: 'assistant',
+      id: 'msg-assistant',
+      content: [
+        { type: 'reasoning', text: '内部推理不应入库' },
+        { type: 'text', text },
+        { type: 'tool-call', id: 'call-1', name: 'recall', arguments: '{"query":"记忆"}' },
+      ],
+      source: { kind: 'model', provider: 'deepseek-account', model: 'deepseek-flash' },
+    },
+    stream: [],
+  }
+}
+
+function toolResult(text: string): unknown {
+  return {
+    turn: 1,
+    step: 0,
+    message: {
+      role: 'tool',
+      id: 'msg-tool',
+      content: [{ type: 'text', text }],
+      source: { kind: 'tool', callId: 'call-1' },
+      toolCallId: 'call-1',
+    },
+  }
+}
+
+test('recorder stores user, assistant, and tool messages in L0', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(session, makeEvent('user/message', 1, userMessage('我们上次聊了记忆系统')))
+    recorder.handle(session, makeEvent('assistant/message', 2, assistantMessage('是的，四层记忆')))
+    recorder.handle(session, makeEvent('tool/result', 3, toolResult('检索到 2 条日记')))
+
+    assert.equal(countMessages(db), 3)
+    const rows = db.prepare('select role, turn, content from messages order by seq').all() as Array<{
+      role: string
+      turn: number
+      content: string
+    }>
+    assert.deepEqual(
+      rows.map((row) => row.role),
+      ['user', 'assistant', 'tool'],
+    )
+    assert.deepEqual(
+      rows.map((row) => row.turn),
+      [1, 1, 1],
+    )
+    assert.match(rows[1]?.content ?? '', /四层记忆/)
+    assert.doesNotMatch(rows[1]?.content ?? '', /内部推理/)
+    assert.match(rows[1]?.content ?? '', /\[call recall\]/)
+  } finally {
+    db.close()
+  }
+})
+
+test('replaying the same events does not duplicate rows', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    const events = [
+      makeEvent('turn/start', 0, { turn: 1 }),
+      makeEvent('user/message', 1, userMessage('同一句话')),
+    ]
+    for (const event of events) recorder.handle(session, event)
+    for (const event of events) recorder.handle(session, event)
+    assert.equal(countMessages(db), 1)
+  } finally {
+    db.close()
+  }
+})
+
+test('system and developer messages are not memories', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(
+      session,
+      makeEvent('system/message', 1, { turn: 1, step: 0, message: userMessage('system prompt') }),
+    )
+    recorder.handle(session, makeEvent('developer/message', 2, { turn: 1, step: 0, message: userMessage('dev') }))
+    assert.equal(countMessages(db), 0)
+  } finally {
+    db.close()
+  }
+})
+
+test('malformed payloads never throw', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    assert.doesNotThrow(() => recorder.handle(session, makeEvent('user/message', 1, null)))
+    assert.doesNotThrow(() => recorder.handle(session, makeEvent('assistant/message', 2, { message: 'nope' })))
+    assert.doesNotThrow(() => recorder.handle(session, makeEvent('unknown/type', 3, {})))
+    assert.equal(countMessages(db), 0)
+  } finally {
+    db.close()
+  }
+})
+
+test('recorded content is searchable through the L0 index', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(session, makeEvent('user/message', 1, userMessage('下周三去看海')))
+    const hits = searchMessages(db, '看海')
+    assert.equal(hits.length, 1)
+  } finally {
+    db.close()
+  }
+})

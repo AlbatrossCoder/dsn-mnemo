@@ -24,13 +24,18 @@ create table sessions (
 create table messages (
   id integer primary key autoincrement,
   session_id text not null references sessions(id) on delete cascade,
-  turn integer not null,
+  seq integer not null,
+  turn integer not null default 0,
   role text not null check (role in ('user', 'assistant', 'tool')),
+  message_id text,
   content text not null,
   content_seg text not null,
-  created_at text not null default (datetime('now'))
+  raw text not null,
+  created_at text not null default (datetime('now')),
+  unique (session_id, seq)
 );
 create index idx_messages_session_turn on messages(session_id, turn);
+create index idx_messages_created on messages(created_at desc);
 
 create virtual table messages_fts using fts5(
   content,

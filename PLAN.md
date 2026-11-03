@@ -258,13 +258,21 @@ for await (const chunk of ctx.llm.stream({
 |---|---|---|
 | P0 | ✅ | patch `insert` 装载成功；桌面端模型调用 `mnemo_ping` 返回 `mnemo 0.1.0 ok (C:/Users/admin/.dsh/mnemo/mnemo.db)`；`scripts/harness-test.mjs` 在裸 Cordis + `ToolRuntime` 里注册并执行通过 |
 | P1 | ✅ | `node --test "lib/**/*.test.js"` 15/15；覆盖迁移幂等、外键约束、2 字/多字中文命中、`bm25` 排序、索引重建、空库与纯标点查询 |
-| P2 | ⬜ | — |
-| P3–P6 | ⬜ | — |
+| P2 | ✅ | `session/event` → L0 落库、`recall` 双 scope 已实现；`scripts/harness-test.mjs` 用**真实 SessionStore** 驱动事件，L0 能落库并被 `recall` 命中；单测 29/29。桌面端需重启后才加载 0.2.0 |
+| P3 | ⬜ | — |
+| P4–P6 | ⬜ | — |
 
 实现备注（P1 期间确认）：
 
 - `Intl.Segmenter('zh')` 对常见词（记忆/系统/难过）切分正确，但会把部分词切开（如「插件」→`插 件`、「本鲸」→`本 鲸`）。因为索引与查询共用同一函数，检索仍然可用；P2 评估召回质量时再决定是否补 bigram 兜底。
 - FTS5 外部内容表的 `rebuild` 命令会去读未分词的 `content` 列，**不可用**；`rebuildIndexes()` 改为 `delete-all` + 从 `*_seg` 列重灌。
+
+实现备注（P2 期间确认）：
+
+- `user/message` 事件载荷就是 `UserMessage` 本身，**不带 turn**；turn 只能靠 `turn/start` 事件在内存里跟踪，进程重启后旧会话的 turn 会回落到 0。
+- L0 用 `(session_id, seq)` 唯一约束去重：同一事件被重放（HMR、恢复）不会重复入库。
+- 只记 `user/message`、`assistant/message`、`tool/result`；`system/message` 与 `developer/message` 不算记忆，reasoning 块也不入库。
+- 无头模式（`dsh headless`）跑不了 `deepseek-account` 提供商（`ACCOUNT_SIGN_IN_REQUIRED`，需要 API key），所以**真实模型端到端只能在桌面端验收**；无模型链路用 `scripts/harness-test.mjs` 验证。
 
 ---
 
