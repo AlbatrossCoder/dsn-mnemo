@@ -3,17 +3,20 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { openDatabase } from './db/database.js'
+import { formatDate, renderStablePrefix } from './inject/stable-prefix.js'
 import { SessionRecorder } from './session/recorder.js'
+import { anchorsInWindow } from './store/anchor-store.js'
+import { createAnchorTool } from './tools/anchor-upsert.js'
 import { createRecallTool } from './tools/recall.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
 export const name = 'mnemo'
 
 /**
- * Services required before `apply` runs. `sessions` supplies the event stream
- * that feeds L0; `tools` is the registry `recall` and `mnemo_ping` join.
+ * Services required before `apply` runs. `systemPrompt` owns the cached stable
+ * prefix, `sessions` supplies the L0 event stream, `tools` is the registry.
  */
-export const inject = ['tools', 'sessions']
+export const inject = ['tools', 'sessions', 'systemPrompt']
 
 /** User-facing configuration (mirrors DESIGN.md §8). */
 export const Config = z.object({
@@ -28,7 +31,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.2.0'
+const VERSION = '0.3.0'
 
 /**
  * Mount the memory runtime.
@@ -47,6 +50,18 @@ export function apply(ctx: Context, config: MnemoConfig) {
 
   ctx.on('session/event', (session, event: SessionEvent) => {
     recorder.handle(session, event)
+  })
+
+  // Stable prefix: rules + anchors inside today's window. Everything here is
+  // deterministic for a given day, so the cached request prefix stays intact.
+  ctx.systemPrompt.section({
+    name: 'mnemo:rules',
+    order: 30,
+    interpolate: false,
+    text: () => {
+      const today = formatDate(new Date())
+      return renderStablePrefix(anchorsInWindow(db, today, config.anchorWindowDays), today)
+    },
   })
 
   const ping = defineTool({
@@ -78,4 +93,5 @@ export function apply(ctx: Context, config: MnemoConfig) {
       logLimit: config.recallLogLimit,
     }),
   )
+  ctx.tools.register(createAnchorTool(db))
 }

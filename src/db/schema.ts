@@ -85,10 +85,11 @@ create table anchors (
   id integer primary key autoincrement,
   event_name text not null,
   target_date text not null,
-  window_days integer not null default 2,
+  window_days integer,
   tone_hint text,
   last_fired_on text,
-  created_at text not null default (datetime('now'))
+  created_at text not null default (datetime('now')),
+  unique (event_name, target_date)
 );
 create index idx_anchors_target on anchors(target_date);
 

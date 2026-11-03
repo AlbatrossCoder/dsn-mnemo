@@ -259,8 +259,9 @@ for await (const chunk of ctx.llm.stream({
 | P0 | ✅ | patch `insert` 装载成功；桌面端模型调用 `mnemo_ping` 返回 `mnemo 0.1.0 ok (C:/Users/admin/.dsh/mnemo/mnemo.db)`；`scripts/harness-test.mjs` 在裸 Cordis + `ToolRuntime` 里注册并执行通过 |
 | P1 | ✅ | `node --test "lib/**/*.test.js"` 15/15；覆盖迁移幂等、外键约束、2 字/多字中文命中、`bm25` 排序、索引重建、空库与纯标点查询 |
 | P2 | ✅ | `session/event` → L0 落库、`recall` 双 scope 已实现；`scripts/harness-test.mjs` 用**真实 SessionStore** 驱动事件，L0 能落库并被 `recall` 命中；单测 29/29。桌面端需重启后才加载 0.2.0 |
-| P3 | ⬜ | — |
-| P4–P6 | ⬜ | — |
+| P3 | ✅ | `systemPrompt.section('mnemo:rules', order 30)` 稳定前缀 + `anchors` 日期窗口 + `anchor_upsert` 工具；harness 用真实 `systemPrompt.assemble()` 验证「同日两次结果字节一致」「锚点写入后出现」；单测 42/42。桌面端需重启后才加载 0.3.0 |
+| P4 | ⬜ | — |
+| P5–P6 | ⬜ | — |
 
 实现备注（P1 期间确认）：
 
