@@ -3,63 +3,37 @@ import test from 'node:test'
 import { openDatabase } from '../db/database.js'
 import { insertDiary } from '../store/diary-store.js'
 import { insertPoint } from '../store/point-store.js'
-import {
-  capHits,
-  createProactiveText,
-  isProactiveTrigger,
-  lastHumanTurn,
-  renderProactive,
-  type ProactiveSession,
-} from './proactive.js'
+import { touchSession } from '../store/message-store.js'
+import { capHits, createProactiveText, renderProactive, type ProactiveSession } from './proactive.js'
 
 const NOW = new Date('2026-11-03T00:00:00Z')
 
-function turn(text: string, id = 'm1', sourceKind = 'user'): ProactiveSession {
-  return {
-    id: 's1',
-    deriveMessages: () => [
-      { id: 'sys', role: 'system', content: [{ type: 'text', text: 'you are…' }], source: { kind: 'system-prompt' } },
-      { id, role: 'user', content: [{ type: 'text', text }], source: { kind: sourceKind } },
-    ],
-  }
+function user(id: string, text: string) {
+  const withId = { id, role: 'user', content: [{ type: 'text', text }], source: { kind: 'user' } }
+  return withId
 }
 
-test('time references and emotion words trigger, neutral text does not', () => {
-  assert.equal(isProactiveTrigger('你还记得上次我们去哪了吗'), true)
-  assert.equal(isProactiveTrigger('今天有点难过'), true)
-  assert.equal(isProactiveTrigger('帮我写一个排序函数'), false)
-  assert.equal(isProactiveTrigger('嗯'), false)
-})
+function sessionOf(id: string, history: readonly unknown[], sessionId = 's1'): ProactiveSession {
+  return { id: sessionId, deriveMessages: () => history }
+}
 
-test('lastHumanTurn skips injected snapshots and assistant messages', () => {
-  const session: ProactiveSession = {
-    id: 's1',
-    deriveMessages: () => [
-      { id: 'a', role: 'user', content: [{ type: 'text', text: '真实提问' }], source: { kind: 'user' } },
-      { id: 'b', role: 'assistant', content: [{ type: 'text', text: '回答' }], source: { kind: 'model' } },
-      { id: 'c', role: 'user', content: [{ type: 'text', text: '注入的快照' }], source: { kind: 'recall' } },
-    ],
-  }
-  assert.deepEqual(lastHumanTurn(session), { id: 'a', text: '真实提问' })
-})
-
-test('no trigger yields an empty contribution', () => {
+test('an unrelated turn injects nothing', () => {
   const db = openDatabase(':memory:')
   try {
     insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '和主人一起看了海，风很大', importance: 0.9 })
     const provider = createProactiveText(db, { limit: 2, now: () => NOW })
-    assert.equal(provider(turn('帮我写一个排序函数')), '')
+    assert.equal(provider(sessionOf('m1', [user('m1', '帮我写一个排序函数')])), '')
   } finally {
     db.close()
   }
 })
 
-test('a triggered turn surfaces matching diaries', () => {
+test('a matching topic surfaces diaries', () => {
   const db = openDatabase(':memory:')
   try {
     insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '和主人一起看了海，风很大，主人笑了很久', importance: 0.9 })
     const provider = createProactiveText(db, { limit: 2, now: () => NOW })
-    const text = provider(turn('你还记得上次看海吗', 'm1'))
+    const text = provider(sessionOf('m1', [user('m1', '你还记得上次看海吗')]))
     assert.match(text, /看了海/)
     assert.match(text, /长期记忆/)
   } finally {
@@ -67,25 +41,26 @@ test('a triggered turn surfaces matching diaries', () => {
   }
 })
 
-test('the same diary is not surfaced twice in one session', () => {
+test('a burst of short messages still carries the topic', () => {
   const db = openDatabase(':memory:')
   try {
-    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '和主人一起看了海，风很大', importance: 0.9 })
-    const provider = createProactiveText(db, { limit: 2, now: () => NOW })
-    assert.match(provider(turn('还记得看海吗', 'm1')), /看了海/)
-    assert.equal(provider(turn('上次看海那天风大吗', 'm2')), '')
+    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '周末去吃了上次那家火锅店', importance: 0.8 })
+    const provider = createProactiveText(db, { limit: 5, now: () => NOW })
+    const history = [user('m1', '我们周末去吃火锅吧'), user('m2', '就上次那家')]
+    const text = provider(sessionOf('m2', history))
+    assert.match(text, /火锅/)
   } finally {
     db.close()
   }
 })
 
-test('repeated assemblies for one message are byte-identical', () => {
+test('the same memory is not injected again inside the cooldown', () => {
   const db = openDatabase(':memory:')
   try {
-    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '一起看了海', importance: 0.9 })
-    const provider = createProactiveText(db, { limit: 2, now: () => NOW })
-    const session = turn('还记得看海吗', 'm1')
-    assert.equal(provider(session), provider(session))
+    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '和主人一起看了海，风很大', importance: 0.9 })
+    const provider = createProactiveText(db, { limit: 2, now: () => NOW, cooldownTurns: 10 })
+    assert.match(provider(sessionOf('m1', [user('m1', '还记得看海吗')])), /看了海/)
+    assert.equal(provider(sessionOf('m2', [user('m2', '上次看海那天风大吗')])), '')
   } finally {
     db.close()
   }
@@ -100,9 +75,36 @@ test('memory points surface alongside diaries by association', () => {
       importance: 0.9,
     })
     const provider = createProactiveText(db, { limit: 20, now: () => NOW })
-    const text = provider(turn('你还记得交房租的事吗', 'm1'))
+    const text = provider(sessionOf('m1', [user('m1', '你还记得交房租的事吗')]))
     assert.match(text, /房租/)
     assert.match(text, /记忆点/)
+  } finally {
+    db.close()
+  }
+})
+
+test('group auto-injection is public-only', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 's-group', 1, { kind: 'group', audienceId: 'g1' })
+    insertDiary(db, {
+      subjectKind: 'group',
+      subjectId: 'g1',
+      visibility: 'public',
+      content: '群里约了周末去吃火锅',
+      importance: 0.8,
+    })
+    insertDiary(db, {
+      subjectKind: 'group',
+      subjectId: 'g1',
+      visibility: 'private',
+      content: '某个群友私下说要去吃火锅',
+      importance: 0.8,
+    })
+    const provider = createProactiveText(db, { limit: 5, now: () => NOW })
+    const text = provider(sessionOf('m1', [user('m1', '周末吃火锅吗')], 's-group'))
+    assert.match(text, /群里约了/)
+    assert.doesNotMatch(text, /私下说/)
   } finally {
     db.close()
   }
