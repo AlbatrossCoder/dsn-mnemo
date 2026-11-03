@@ -126,7 +126,7 @@ score ≥ 20  → close
 
 ```powershell
 & $node $pnpm run build     # tsc → lib/
-& $node $pnpm test          # node --test，78 项
+& $node $pnpm test          # node --test，83 项
 & $node scripts\harness-test.mjs   # 真实 Service + Session + 事件链路的集成验证
 & $node scripts\mnemo-status.mjs   # 查看记忆库里现有数据
 ```
@@ -147,6 +147,8 @@ DSH 的「插件市场」不是上传中心，而是**索引驱动**的：DSH �
    `cordis.patch.yml` 是组合包（bundle）层，安装后自动把 `dsn-mnemo` 这一行插入 profile。`prepack` 会先跑 `tsc`，保证发布的 `lib/` 是最新的。
 2. **发布到 npm（或 Git）**：
    ```powershell
+   # 发布脚本里的 tsc 需要 node 在 PATH 上；用 DSH 自带 Node 时先加进 PATH
+   $env:PATH = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin;$env:PATH"
    & $node $pnpm publish --access public
    ```
    也可以只推 Git 仓库，市场索引里用 `{"type":"git","url":...,"commit":...}` 指向固定提交。

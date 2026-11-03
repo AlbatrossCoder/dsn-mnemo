@@ -12,6 +12,9 @@
   },
   "files": [
     "lib",
+    "!lib/**/*.test.js",
+    "!lib/**/*.test.d.ts",
+    "!lib/**/*.js.map",
     "cordis.patch.yml",
     "LICENSE",
     "README.md"
@@ -42,7 +45,7 @@
     "watch": "tsc -w -p tsconfig.json",
     "test": "node --test \"lib/**/*.test.js\"",
     "verify": "pnpm run build && pnpm run test",
-    "prepack": "pnpm run build",
+    "prepack": "tsc -p tsconfig.json",
     "market:check": "node scripts/validate-market-index.mjs"
   },
   "peerDependencies": {
