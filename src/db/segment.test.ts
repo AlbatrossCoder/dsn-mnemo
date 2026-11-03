@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildMatchQuery, segment } from './segment.js'
+import { buildAnyMatchQuery, buildMatchQuery, segment } from './segment.js'
 
 test('segment spaces Chinese words and drops blank pieces', () => {
   const output = segment('今天和主人聊了记忆系统的设计')
@@ -34,4 +34,9 @@ test('buildMatchQuery emits only well-formed quoted terms', () => {
 test('buildMatchQuery returns null for punctuation-only input', () => {
   assert.equal(buildMatchQuery('   '), null)
   assert.equal(buildMatchQuery('，。！'), null)
+})
+
+test('buildAnyMatchQuery joins terms with OR', () => {
+  assert.equal(buildAnyMatchQuery('记忆系统'), '"记忆" OR "系统"')
+  assert.equal(buildAnyMatchQuery('   '), null)
 })

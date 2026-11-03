@@ -9,7 +9,7 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
-import { searchDiaries } from '../store/diary-store.js'
+import { searchDiaries, type DiaryHit } from '../store/diary-store.js'
 import { searchMessages } from '../store/message-store.js'
 
 export type RecallScope = 'diary' | 'log'
@@ -47,9 +47,8 @@ function normalise(ranks: readonly number[]): (rank: number) => number {
   return (rank) => (worst - rank) / (worst - best)
 }
 
-/** Rank diaries by BM25, importance, and recency. */
-export function rankDiaries(db: DatabaseSync, query: string, limit: number, now = new Date()): RecallHit[] {
-  const hits = searchDiaries(db, query, limit * 2)
+/** Blend BM25, importance, and recency into a 0..1 score per diary hit. */
+export function rankDiaryHits(hits: readonly DiaryHit[], limit: number, now: Date): RecallHit[] {
   if (hits.length === 0) return []
   const bm = normalise(hits.map((hit) => hit.rank))
   return hits
@@ -62,6 +61,11 @@ export function rankDiaries(db: DatabaseSync, query: string, limit: number, now 
     }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
+}
+
+/** Rank diaries by BM25, importance, and recency. */
+export function rankDiaries(db: DatabaseSync, query: string, limit: number, now = new Date()): RecallHit[] {
+  return rankDiaryHits(searchDiaries(db, query, limit * 2), limit, now)
 }
 
 /** Rank transcript messages by BM25 and recency. */

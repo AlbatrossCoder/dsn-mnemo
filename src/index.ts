@@ -1,8 +1,10 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { openDatabase } from './db/database.js'
+import { createProactiveText } from './inject/proactive.js'
 import { formatDate, renderStablePrefix } from './inject/stable-prefix.js'
 import { SessionRecorder } from './session/recorder.js'
 import { anchorsInWindow } from './store/anchor-store.js'
@@ -31,7 +33,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.3.0'
+const VERSION = '0.4.0'
 
 /**
  * Mount the memory runtime.
@@ -94,4 +96,17 @@ export function apply(ctx: Context, config: MnemoConfig) {
     }),
   )
   ctx.tools.register(createAnchorTool(db))
+
+  // Dynamic context: one contribution per live agent, so the text can be
+  // derived from that agent's own latest human message. It is replaced every
+  // turn (never accumulated) and lives outside the cached stable prefix.
+  const proactive = createProactiveText(db, { limit: config.contextRecallLimit })
+  ctx.on('agent/created', ({ agent }: { agent: Agent }) => {
+    agent.ctx.systemPrompt.context({
+      name: 'mnemo:recall',
+      order: 40,
+      interpolate: false,
+      text: () => proactive(agent.session),
+    })
+  })
 }

@@ -27,7 +27,7 @@ export function segment(text: string): string {
 const NOISE = /^[\p{P}\p{S}\s]+$/u
 
 /**
- * Build an FTS5 MATCH expression from free text.
+ * Build an FTS5 MATCH expression from free text (implicit AND).
  *
  * @param text - raw user or model query.
  * @returns a quoted AND query, or `null` when nothing searchable remains.
@@ -41,4 +41,17 @@ export function buildMatchQuery(text: string): string | null {
   }
   if (tokens.length === 0) return null
   return tokens.map((token) => `"${token.replace(/"/g, '""')}"`).join(' ')
+}
+
+/**
+ * Build a quoted OR query, used when the input is a whole sentence: requiring
+ * every token (AND) would miss memories that share only part of it.
+ *
+ * @param text - raw sentence.
+ * @returns a quoted OR query, or `null` when nothing searchable remains.
+ */
+export function buildAnyMatchQuery(text: string): string | null {
+  const match = buildMatchQuery(text)
+  if (match === null) return null
+  return match.split(' ').join(' OR ')
 }

@@ -14,10 +14,19 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
+import { openDatabase } from '../lib/db/database.js'
+import { insertDiary } from '../lib/store/diary-store.js'
 import * as mnemo from '../lib/index.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'mnemo-harness-'))
 const dbPath = join(dir, 'mnemo.db')
+
+// Seed one diary before the plugin takes ownership of the file.
+{
+  const seed = openDatabase(dbPath)
+  insertDiary(seed, { content: '和主人一起看了海，风很大，主人笑了很久', importance: 0.9 })
+  seed.close()
+}
 
 const today = new Date()
 const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
@@ -92,9 +101,34 @@ try {
   const rulesAgain = again.sections.find((section) => section.name === 'mnemo:rules')
   assert.equal(rulesAfter.text, rulesAgain.text, 'stable prefix changed within the same day')
 
+  // Dynamic context: a fake agent drives `agent/created`, the plugin registers
+  // a per-agent context that surfaces the diary for a triggered user message.
+  const fakeSession = {
+    id: 's-fake',
+    deriveMessages: () => [
+      {
+        id: 'm-fake',
+        role: 'user',
+        content: [{ type: 'text', text: '你还记得上次看海吗' }],
+        source: { kind: 'user' },
+      },
+    ],
+  }
+  await ctx.emit('agent/created', { agent: { session: fakeSession, ctx }, source: 'fresh' })
+
+  const withRecall = await ctx.systemPrompt.assemble()
+  const memoryContext = withRecall.contexts.find((entry) => entry.name === 'mnemo:recall')
+  assert.ok(memoryContext, 'mnemo:recall context missing')
+  assert.match(memoryContext.text, /看了海/)
+
+  const stableAgain = await ctx.systemPrompt.assemble()
+  const stableContext = stableAgain.contexts.find((entry) => entry.name === 'mnemo:recall')
+  assert.equal(stableContext.text, memoryContext.text, 'dynamic context changed within one turn')
+
   console.log(`PASS registry tools: ${names.join(', ')}`)
   console.log('PASS session/event -> L0 -> recall:', JSON.stringify(found.results[0]))
-  console.log('PASS stable prefix ->', JSON.stringify(rulesAfter.text.split('\n').slice(0, 1).join('')))
+  console.log('PASS stable prefix ->', JSON.stringify(rulesAfter.text.split('\n')[0]))
+  console.log('PASS proactive context ->', JSON.stringify(memoryContext.text.split('\n')[1]))
 } finally {
   await ctx.fiber.dispose()
   rmSync(dir, { recursive: true, force: true })

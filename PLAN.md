@@ -260,7 +260,7 @@ for await (const chunk of ctx.llm.stream({
 | P1 | ✅ | `node --test "lib/**/*.test.js"` 15/15；覆盖迁移幂等、外键约束、2 字/多字中文命中、`bm25` 排序、索引重建、空库与纯标点查询 |
 | P2 | ✅ | `session/event` → L0 落库、`recall` 双 scope 已实现；`scripts/harness-test.mjs` 用**真实 SessionStore** 驱动事件，L0 能落库并被 `recall` 命中；单测 29/29。桌面端需重启后才加载 0.2.0 |
 | P3 | ✅ | `systemPrompt.section('mnemo:rules', order 30)` 稳定前缀 + `anchors` 日期窗口 + `anchor_upsert` 工具；harness 用真实 `systemPrompt.assemble()` 验证「同日两次结果字节一致」「锚点写入后出现」；单测 42/42。桌面端需重启后才加载 0.3.0 |
-| P4 | ⬜ | — |
+| P4 | ✅ | 触发规则（时间指代/情绪词）→ 日记检索 → 每 agent 的 `systemPrompt.context('mnemo:recall')`；harness 通过 `agent/created` 驱动，组装结果里出现浮现内容且同一轮内字节稳定；单测 51/51 |
 | P5–P6 | ⬜ | — |
 
 实现备注（P1 期间确认）：
@@ -274,6 +274,12 @@ for await (const chunk of ctx.llm.stream({
 - L0 用 `(session_id, seq)` 唯一约束去重：同一事件被重放（HMR、恢复）不会重复入库。
 - 只记 `user/message`、`assistant/message`、`tool/result`；`system/message` 与 `developer/message` 不算记忆，reasoning 块也不入库。
 - 无头模式（`dsh headless`）跑不了 `deepseek-account` 提供商（`ACCOUNT_SIGN_IN_REQUIRED`，需要 API key），所以**真实模型端到端只能在桌面端验收**；无模型链路用 `scripts/harness-test.mjs` 验证。
+
+实现备注（P4 期间确认）：
+
+- 中文分词是**精确词**匹配：日记里「看了海」切出 `看了` + `海`，查询「看海」切出 `看海`，词面对不上 → FTS 0 命中。已加字符级兜底（≥2 个实义汉字命中，按命中数与时间排序）。P5 写日记后召回质量依赖这个兜底。
+- `systemPrompt.context()` 的 provider 拿不到会话对象，所以按 agent 注册：根上下文监听 `agent/created`（无标签监听器是全局的），在 `agent.ctx` 上注册 `mnemo:recall`；provider 闭包读取该 agent 的最新人类消息，并按消息 id 记忆结果，保证同一轮多步字节一致。
+- 触发规则只做「时间指代 / 情绪词」两类；话题跳变需要 embedding，MVP 不做（DESIGN §4.2 的第三条留到后续）。
 
 ---
 

@@ -91,7 +91,7 @@ test('the recall tool executes and reports its scope', async () => {
       results: unknown[]
     }
     assert.equal(result.scope, 'diary')
-    assert.equal(result.results.length, 0) // 「看海」不在日记原文里，只验证工具可执行
+    assert.equal(result.results.length, 1) // 字符兜底让「看海」命中「看了海」
     const second = (await tool.execute({ query: '海' }, exec)) as { results: unknown[] }
     assert.equal(second.results.length, 1)
   } finally {
