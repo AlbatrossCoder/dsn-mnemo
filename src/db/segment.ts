@@ -38,7 +38,10 @@ const QUERY_STOPWORDS = new Set('的了是在我有和就不没都会要你他�
 /** True when a token deserves a slot in an FTS query. */
 function isSearchableToken(token: string): boolean {
   if (token.length === 0 || NOISE.test(token)) return false
-  return [...token].some((char) => /[\u3400-\u9fff]/u.test(char) && !QUERY_STOPWORDS.has(char))
+  // Drop tokens made entirely of single-character CJK stopwords (的 / 了 / 我们 …);
+  // keep anything that carries at least one meaningful character — including
+  // Latin words, digits and mixed tokens like `a"b`.
+  return ![...token].every((char) => /[\u3400-\u9fff]/u.test(char) && QUERY_STOPWORDS.has(char))
 }
 
 /** Segment raw text into meaningful query tokens, dropping filler. */
