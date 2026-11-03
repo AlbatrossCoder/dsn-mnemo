@@ -51,6 +51,8 @@ persons(user_id, display_name, relationship, public_note, first_seen, last_seen)
 | L2 | 记忆点（一句话的小事/话题/待办） | **7 天**，重复/重要可晋升 L1 | 关联打分（词面 + 实体 + 时间模式） |
 | L3 | 锚点（日期 + 事件名，可重复） | 长期 | 日期窗口匹配，注入稳定前缀 |
 
+自动过期清理**只针对 L2 记忆点**（7 天）；L1 日记与 L3 锚点不会自动删除。
+
 ## 4. 写入路径
 
 ### user 模式
@@ -69,7 +71,7 @@ persons(user_id, display_name, relationship, public_note, first_seen, last_seen)
 | 触发 | 动作 |
 |---|---|
 | 每条群消息 | 写 L0（含说话人、`addressed` 标记），**不唤醒模型** |
-| 每 15 分钟或 100 条消息 | 速记员产出 3–5 条 L2 记忆点（只对活跃群） |
+| 每 15 分钟或 100 条消息 | 速记员（通道侧）产出 3–5 条 L2 记忆点（只对活跃群；记忆插件只提供存储与检索） |
 | 被 @ / 被回复 / 被提及 / 重要信号 | 日记判断（闲聊不触发） |
 | 显式 `anchor_upsert` | 写 L3，主体 = 当前 group |
 
