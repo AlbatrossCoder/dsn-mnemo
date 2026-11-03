@@ -264,6 +264,12 @@ for await (const chunk of ctx.llm.stream({
 | P5 | ✅ | 日记引擎：`turn/end(completed)` → 空闲计时 → 单次轻量判断 → 写入；`diary_write` / `diary_update`（严格理由 + `diary_revisions` 备份）；启动 `catchUp()` 补判。单测 70/70。真机 30 分钟静置与真实模型调用待重启后验收 |
 | P6 | ✅ | 关系阶段公式落地（`turn/end` 更新）；README 重写为可安装版本；DESIGN 补「实现修正」；边界测试（超长对话 prompt 有界、空库、模型失败、无锚点）加入；单测 74/74。真机冒烟仍待重启 |
 
+实现备注（P6 期间确认）：
+
+- **HMR 只能重载「配置树」，不能重载插件源码**：改 profile patch 会触发重组，但改 `lib/index.js` 不会让已加载的模块重新导入——loader 按 entry 名称缓存模块命名空间，同一 `file://` 路径再次挂载会复用旧命名空间。`hmr.root` 要**重启后**才生效。所以开发期改代码必须重启 DSH，或用 `scripts/harness-test.mjs`（可直接用 DSH 自带 Electron 运行）验证。
+- 插件 apply 抛错在桌面端没有可见日志；已在 `apply` 外层加 `~/.dsh/mnemo/last-error.log` 记录（仅在失败时写），方便重启后定位装载问题。
+- 实测：`scripts/harness-test.mjs` 在 **DSH 自带 Electron 运行时**里跑通（同一套 `node:sqlite`、同一批服务），五个工具注册、事件链路、稳定前缀、前置浮现全部通过。
+
 实现备注（P5 期间确认）：
 
 - 计时器用进程内 `setTimeout`（`timer` 服务不在 `inject` 里，避免多一个硬依赖），`dispose()` 统一清理；进程被杀靠 `sessions.last_active_at` + 启动 `catchUp()` 补判（只补 30 分钟内到 30 天之间的会话）。

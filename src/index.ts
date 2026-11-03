@@ -1,8 +1,11 @@
-﻿import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
+import { appendFileSync, mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 import { openDatabase } from './db/database.js'
 import { DiaryEngine } from './diary/engine.js'
 import { createProactiveText } from './inject/proactive.js'
@@ -43,13 +46,38 @@ export type MnemoConfig = Schemastery.TypeT<typeof Config>
 const VERSION = '0.6.0'
 
 /**
+ * Record a load-time failure where a human can find it. The loader reports
+ * plugin failures only to its own console, which a desktop launch does not
+ * expose, so a failed mount would otherwise be invisible.
+ */
+function recordLoadError(error: unknown): void {
+  try {
+    const dir = join(homedir(), '.dsh', 'mnemo')
+    mkdirSync(dir, { recursive: true })
+    const detail = error instanceof Error ? (error.stack ?? error.message) : String(error)
+    appendFileSync(join(dir, 'last-error.log'), `${new Date().toISOString()} ${detail}\n`)
+  } catch {
+    // Diagnostics must never mask the original failure.
+  }
+}
+
+/**
  * Mount the memory runtime.
  *
  * Opening the database happens before registration so a broken path fails
  * loudly at load time instead of silently degrading every later write.
  * No `export default`: the loader's unwrapExports would drop `inject`.
  */
-export function apply(ctx: Context, config: MnemoConfig) {
+export function apply(ctx: Context, config: MnemoConfig): void {
+  try {
+    setup(ctx, config)
+  } catch (error) {
+    recordLoadError(error)
+    throw error
+  }
+}
+
+function setup(ctx: Context, config: MnemoConfig): void {
   const db = openDatabase(config.dbPath)
   const recorder = new SessionRecorder(db)
 
