@@ -19,7 +19,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.1.0'
+const VERSION = '0.1.1'
 
 /**
  * Register the plugin's tools. Phase 0 exposes only `mnemo_ping`, whose sole

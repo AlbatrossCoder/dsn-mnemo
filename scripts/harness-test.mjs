@@ -24,11 +24,9 @@ const definition = ctx.tools.get('mnemo_ping')
 assert.ok(definition, 'mnemo_ping definition not retrievable')
 
 const result = await definition.execute({}, {})
-assert.deepEqual(result, {
-  pong: true,
-  version: '0.1.0',
-  dbPath: 'C:/tmp/mnemo-harness.db',
-})
+assert.equal(result.pong, true)
+assert.match(result.version, /^\d+\.\d+\.\d+$/)
+assert.equal(result.dbPath, 'C:/tmp/mnemo-harness.db')
 
 console.log(`PASS registry tools: ${names.join(', ')}`)
 console.log('PASS mnemo_ping execute ->', JSON.stringify(result))

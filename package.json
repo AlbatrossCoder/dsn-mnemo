@@ -1,6 +1,6 @@
 {
   "name": "dsn-mnemo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Persistent memory runtime for DeepSeek Harness: L0 logs, L1 diaries, L2 working state, L3 anchors.",
   "type": "module",
