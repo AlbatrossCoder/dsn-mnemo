@@ -25,7 +25,12 @@ const dbPath = join(dir, 'mnemo.db')
 // Seed one diary before the plugin takes ownership of the file.
 {
   const seed = openDatabase(dbPath)
-  insertDiary(seed, { content: '和主人一起看了海，风很大，主人笑了很久', importance: 0.9 })
+  insertDiary(seed, {
+    subjectKind: 'user',
+    subjectId: 'local',
+    content: '和主人一起看了海，风很大，主人笑了很久',
+    importance: 0.9,
+  })
   seed.close()
 }
 
@@ -62,7 +67,7 @@ try {
   await ctx.plugin(mnemo, { dbPath })
 
   const names = ctx.tools.schemas().map((schema) => schema.name)
-  for (const expected of ['mnemo_ping', 'recall', 'anchor_upsert', 'diary_write', 'diary_update']) {
+  for (const expected of ['mnemo_ping', 'recall', 'anchor_upsert', 'diary_write', 'diary_update', 'mnemo_forget']) {
     assert.ok(names.includes(expected), `${expected} missing from registry: ${names.join(', ')}`)
   }
 

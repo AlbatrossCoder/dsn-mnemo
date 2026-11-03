@@ -16,6 +16,7 @@ import { refreshRelationStage } from './store/relation.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
 import { createConsolidateTool } from './tools/diary-consolidate.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
+import { createForgetTool } from './tools/forget.js'
 import { createRecallTool } from './tools/recall.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
@@ -193,6 +194,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
   ctx.tools.register(createDiaryWriteTool(db))
   ctx.tools.register(createDiaryUpdateTool(db))
   ctx.tools.register(createConsolidateTool(db, { flush: (sessionId) => engine.flush(sessionId) }))
+  ctx.tools.register(createForgetTool(db))
 
   // Dynamic context: one contribution per live agent, so the text can be
   // derived from that agent's own latest human message. It is replaced every

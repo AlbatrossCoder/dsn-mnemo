@@ -15,6 +15,21 @@ test('parses a well-formed diary answer', () => {
   assert.match(decision.content, /记忆系统/)
 })
 
+test('parses memory points from the same answer', () => {
+  const decision = parseDiaryResponse(
+    [
+      'IMPORTANCE: 0.8',
+      'EMOTION: 0.5',
+      'TAGS: 日常',
+      'POINTS: 妈妈下周要来看他；他有点紧张',
+      '',
+      '今天聊了他妈妈下周要来的事，他有点紧张。',
+    ].join('\n'),
+  )
+  assert.deepEqual(decision?.points, ['妈妈下周要来看他', '他有点紧张'])
+  assert.doesNotMatch(decision?.content ?? '', /POINTS/)
+})
+
 test('NO_DIARY means no diary', () => {
   assert.equal(parseDiaryResponse('NO_DIARY'), null)
   assert.equal(parseDiaryResponse('no_diary'), null)

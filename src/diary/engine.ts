@@ -10,6 +10,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { countDiariesFor, insertDiary } from '../store/diary-store.js'
 import { sessionSubject } from '../store/message-store.js'
+import { insertPoint } from '../store/point-store.js'
 import { buildJudgePrompt, parseDiaryResponse } from './judge.js'
 
 /** Injectable timer seam so tests never wait thirty real minutes. */
@@ -228,6 +229,10 @@ export class DiaryEngine {
         emotion: decision.emotion,
         typeTags: decision.tags,
       })
+      // The same call distils short-lived points; no extra model request.
+      for (const point of decision.points) {
+        insertPoint(db, { subject, text: point, importance: decision.importance, source: 'diary' })
+      }
       return true
     } catch (error) {
       // A failed judgement must never surface to the conversation.
