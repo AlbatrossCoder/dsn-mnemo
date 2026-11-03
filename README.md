@@ -4,7 +4,7 @@
 
 `dsn-mnemo` 是一个 DeepSeek Harness（DSH）插件。它**不负责人设**——人设由独立的 persona 插件或 preset 提供；它只做一件事：记录发生过什么、把值得留下的沉淀成日记、在合适的时候把对的事浮现进当前对话。
 
-**当前状态**：npm 上最新正式版是 `0.6.5`；仓库 `main` 已到 `0.7.0`（日记三种触发、L0 只记聊天内容、默认不存思考），**待确认后再发布**。单测 95/95、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
+**当前状态**：npm 上最新正式版是 `0.6.6`（L0 只记聊天内容、默认不存思考）；仓库 `main` 已到 `0.7.0`（日记三种触发），**待确认后再发布**。单测 95/95、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载。剩余验收项见 [PLAN.md](PLAN.md) §5。
 
 ---
 
@@ -182,7 +182,8 @@ DSH 的「插件市场」不是上传中心，而是**索引驱动**的：DSH �
 - [PLAN.md](PLAN.md) — 开发计划与交接：环境实测、架构定稿、阶段进度、PC 端验证手册。
 - [DESIGN.md](DESIGN.md) — 原始设计文档；实现与设计不一致处见文末「实现修正」。
 - [docs/publishing.md](docs/publishing.md) — 发布纪律（先测后发、先问再发）与市场索引托管步骤。
-- [docs/multi-user.md](docs/multi-user.md) — 接入 QQ 群等多用户环境的适配分析与迁移草案。
+- [docs/multi-user.md](docs/multi-user.md) — 多用户环境的记忆模型（身份 / 私聊记忆 / 群记忆）与迁移草案。
+- [docs/qq-integration.md](docs/qq-integration.md) — QQ（含群聊）接入方案：通道插件 vs ACP 桥、记忆粒度与工作拆分。
 
 ## 许可
 
