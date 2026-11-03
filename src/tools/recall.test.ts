@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
 import { openDatabase } from '../db/database.js'
 import { insertDiary } from '../store/diary-store.js'
 import { insertMessage, touchSession } from '../store/message-store.js'
@@ -74,6 +75,18 @@ test('limit caps the number of hits', () => {
       insertDiary(db, { content: `记忆 第 ${index} 条`, importance: 0.5 })
     }
     assert.equal(rankDiaries(db, '记忆', 3, NOW).length, 3)
+  } finally {
+    db.close()
+  }
+})
+
+test('recall output validates against its declared schema', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    insertDiary(db, { content: '一起看了海，风很大', importance: 0.7 })
+    const tool = createRecallTool(db, { diaryLimit: 5, logLimit: 5, now: () => NOW })
+    const result = await tool.execute({ query: '海' }, {} as never)
+    assert.deepEqual(validateJsonSchemaValue(tool.output.schema, result), [])
   } finally {
     db.close()
   }
