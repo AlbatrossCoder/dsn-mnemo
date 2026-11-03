@@ -79,6 +79,21 @@ test('limit caps the number of hits', () => {
   }
 })
 
+test('recall hits only expose declared output fields', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    insertDiary(db, { content: '一起看了海，风很大', importance: 0.7 })
+    const tool = createRecallTool(db, { diaryLimit: 5, logLimit: 5, now: () => NOW })
+    const result = (await tool.execute({ query: '海' }, {} as never)) as {
+      results: Array<Record<string, unknown>>
+    }
+    assert.equal(result.results.length, 1)
+    assert.deepEqual(Object.keys(result.results[0] ?? {}).sort(), ['id', 'score', 'source', 'text', 'when'])
+  } finally {
+    db.close()
+  }
+})
+
 test('the recall tool executes and reports its scope', async () => {
   const db = openDatabase(':memory:')
   try {

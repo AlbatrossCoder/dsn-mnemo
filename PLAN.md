@@ -263,6 +263,13 @@ for await (const chunk of ctx.llm.stream({
 | P4 | ✅ | 触发规则（时间指代/情绪词）→ 日记检索 → 每 agent 的 `systemPrompt.context('mnemo:recall')`；harness 通过 `agent/created` 驱动，组装结果里出现浮现内容且同一轮内字节稳定；单测 51/51 |
 | P5 | ✅ | 日记引擎：`turn/end(completed)` → 空闲计时 → 单次轻量判断 → 写入；`diary_write` / `diary_update`（严格理由 + `diary_revisions` 备份）；启动 `catchUp()` 补判。单测 70/70。真机 30 分钟静置与真实模型调用待重启后验收 |
 | P6 | ✅ | 关系阶段公式落地（`turn/end` 更新）；README 重写为可安装版本；DESIGN 补「实现修正」；边界测试（超长对话 prompt 有界、空库、模型失败、无锚点）加入；单测 74/74。真机冒烟仍待重启 |
+| 真机 0.6.1 | ✅ | 重启后装载成功：`mnemo_ping` 返回 `0.6.1`；系统提示出现 `mnemo:rules` 稳定前缀；L0 开始记录（首轮 3 条，会话 turn=9）；发现并修复 `recall` 输出 schema 未声明 `id` 的问题 |
+
+实现备注（真机验收期间确认）：
+
+- **装载失败的真正根因是 `package.json` 的 UTF-8 BOM**。DSH 的包装载校验会读取 `package.json` 判断组合包/要求；带 BOM 时 JSON 解析失败，条目被**静默禁用**（错误只写桌面端 console）。修复后同一份 patch 立即装载成功。PowerShell 5.1 的 `Set-Content -Encoding utf8` 会写 BOM，改清单必须用 Node 或支持无 BOM 的编辑器。
+- `recall` 的输出 schema 与返回对象不一致（返回带 `id`，schema 未声明）会触发 `additionalProperties: false` 校验错误；已在 schema 中声明 `id` 并加单测锁定返回字段集合。
+- 本插件现在同时是**可安装的组合包**：`cordis.patch.yml` + `package.json` 的 `dsh.bundle.patch`；用临时 profile（`dsh.profile.bundles: ["@deepseek-ai/dsh-base", "dsn-mnemo"]`）`--dump-config` 已验证能组合出 `- id: dsn-mnemo` 行。
 
 实现备注（P6 期间确认）：
 

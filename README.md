@@ -125,12 +125,44 @@ score ≥ 20  → close
 
 ```powershell
 & $node $pnpm run build     # tsc → lib/
-& $node $pnpm test          # node --test，74 项
+& $node $pnpm test          # node --test，78 项
 & $node scripts\harness-test.mjs   # 真实 Service + Session + 事件链路的集成验证
 & $node scripts\mnemo-status.mjs   # 查看记忆库里现有数据
 ```
 
 单测依赖 `node:sqlite`，请用 DSH 自带 Node 24（系统 Node 22 早期版本需要 `--experimental-sqlite`）。
+
+## 打包与发布到 DSH 插件市场
+
+DSH 的「插件市场」不是上传中心，而是**索引驱动**的：DSH 自身不预置任何索引源，用户要在「插件 → 发现 → 添加索引源」里填一个索引 URL，市场再按索引安装。
+
+这条链路要求三样东西，本仓库都已就绪：
+
+1. **可发布的包**：`package.json` 已声明
+   ```json
+   "engines": { "node": ">=24", "dsh": "^0.2.1-rc.5" },
+   "dsh": { "manifestVersion": 1, "bundle": { "patch": "./cordis.patch.yml" } }
+   ```
+   `cordis.patch.yml` 是组合包（bundle）层，安装后自动把 `dsn-mnemo` 这一行插入 profile。`prepack` 会先跑 `tsc`，保证发布的 `lib/` 是最新的。
+2. **发布到 npm（或 Git）**：
+   ```powershell
+   & $node $pnpm publish --access public
+   ```
+   也可以只推 Git 仓库，市场索引里用 `{"type":"git","url":...,"commit":...}` 指向固定提交。
+3. **市场索引 JSON（格式 1）**：见 [docs/market-index.example.json](docs/market-index.example.json)，一个最小可用样例。字段要点：
+   - 顶层 `format: 1`、`title`（至少含 `en`）、`plugins[]`；
+   - 每个插件 `name`（npm 包名）+ `versions[]`，每个版本 `version`、`publishTimestamp`（Unix 秒）、`source`（`npm` 或 `git`）、可选 `engines.dsh`；
+   - 可选 `metadata.categories/labels/sortKeys` 与插件的 `metadata.category/keywords/labels/sortKeys`。
+
+   把这份 JSON 放到任意 HTTPS 地址，用 DSH 自带的校验器先验一遍：
+   ```powershell
+   & $node $pnpm run market:check
+   ```
+   （等价于调用 `@deepseek-ai/dsh-plugin-market-index` 的 `parseMarketIndex`，与 DSH 安装时用的是同一套规则。）
+
+之后用户侧的步骤：**插件 → 发现 → 添加索引源** → 粘贴索引 URL → 搜索 `dsn-mnemo` → 安装。安装由 `pluginManager.installBundle` 用 `pnpm add dsn-mnemo@<version>` 完成，profile 的 `dsh.profile.bundles` 会追加该组合包。
+
+> 注意：`package.json` 必须是**无 BOM 的 UTF-8**。带 BOM 时 DSH 读取包清单会失败并把插件行静默禁用（本研究环境踩过：桌面端表现为插件完全不加载，只在启动日志里出现一行 JSON 解析错误）。PowerShell 5.1 的 `Set-Content -Encoding utf8` 会写 BOM，改完 `package.json` 请用 Node 或支持无 BOM 的编辑器保存。
 
 ## 隐私
 

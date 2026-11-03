@@ -133,6 +133,7 @@ export function createRecallTool(db: DatabaseSync, options: RecallOptions) {
             items: {
               type: 'object',
               properties: {
+                id: { type: 'number' },
                 source: { type: 'string', enum: ['diary', 'log'] },
                 text: { type: 'string' },
                 score: { type: 'number' },
