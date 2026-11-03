@@ -79,6 +79,35 @@ test('storeReasoning keeps reasoning blocks in raw JSON', () => {
   }
 })
 
+test('injected user-role context is not chat', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(
+      session,
+      makeEvent('user/message', 1, {
+        id: 'ctx',
+        role: 'user',
+        content: [{ type: 'text', text: 'Time sampled while preparing turn 1' }],
+        source: { kind: 'time-context' },
+      }),
+    )
+    recorder.handle(
+      session,
+      makeEvent('user/message', 2, {
+        id: 'goal',
+        role: 'user',
+        content: [{ type: 'text', text: '<goal_round>…</goal_round>' }],
+        source: { kind: 'goal' },
+      }),
+    )
+    assert.equal(countMessages(db), 0)
+  } finally {
+    db.close()
+  }
+})
+
 test('recorder stores user, assistant, and tool messages in L0', () => {
   const db = openDatabase(':memory:')
   try {
@@ -88,7 +117,8 @@ test('recorder stores user, assistant, and tool messages in L0', () => {
     recorder.handle(session, makeEvent('assistant/message', 2, assistantMessage('是的，四层记忆')))
     recorder.handle(session, makeEvent('tool/result', 3, toolResult('检索到 2 条日记')))
 
-    assert.equal(countMessages(db), 3)
+    // L0 is chat only: the tool result is not conversation.
+    assert.equal(countMessages(db), 2)
     const rows = db.prepare('select role, turn, content from messages order by seq').all() as Array<{
       role: string
       turn: number
@@ -96,15 +126,15 @@ test('recorder stores user, assistant, and tool messages in L0', () => {
     }>
     assert.deepEqual(
       rows.map((row) => row.role),
-      ['user', 'assistant', 'tool'],
+      ['user', 'assistant'],
     )
     assert.deepEqual(
       rows.map((row) => row.turn),
-      [1, 1, 1],
+      [1, 1],
     )
     assert.match(rows[1]?.content ?? '', /四层记忆/)
     assert.doesNotMatch(rows[1]?.content ?? '', /内部推理/)
-    assert.match(rows[1]?.content ?? '', /\[call recall\]/)
+    assert.doesNotMatch(rows[1]?.content ?? '', /\[call /)
   } finally {
     db.close()
   }

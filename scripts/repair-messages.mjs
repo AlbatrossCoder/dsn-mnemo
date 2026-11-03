@@ -1,14 +1,17 @@
 /**
  * Repair historical L0 rows.
  *
- *   node scripts/repair-messages.mjs [dbPath] [--keep-reasoning]
+ *   node scripts/repair-messages.mjs [dbPath] [--keep-reasoning] [--keep-tools] [--dry-run]
  *
- * - recomputes `content`/`content_seg` with the current flatten rules (tool-call
- *   arguments are no longer searchable);
+ * L0 now stores chat only (human prompts + assistant visible replies). This
+ * script brings an older database in line:
+ *
+ * - recomputes `content`/`content_seg` with the current flatten rules;
  * - strips reasoning blocks from the stored raw JSON unless `--keep-reasoning`;
- * - rebuilds both FTS indexes and vacuums a backup first.
- *
- * Pass `--dry-run` to only report what would change.
+ * - deletes tool-role rows and assistant rows that flatten to no text unless
+ *   `--keep-tools`;
+ * - rewrites raw JSON (reasoning stripped) and rebuilds both FTS indexes;
+ * - writes a `VACUUM INTO` backup before touching anything.
  */
 import { openDatabase, rebuildIndexes, resolveDbPath } from '../lib/db/database.js'
 import { flattenContent } from '../lib/session/flatten.js'
@@ -16,6 +19,7 @@ import { segment } from '../lib/db/segment.js'
 
 const args = process.argv.slice(2)
 const keepReasoning = args.includes('--keep-reasoning')
+const keepTools = args.includes('--keep-tools')
 const dryRun = args.includes('--dry-run')
 const dbPath = args.find((arg) => !arg.startsWith('--')) ?? '~/.dsh/mnemo/mnemo.db'
 
@@ -28,11 +32,13 @@ if (!dryRun) {
   console.log(`backup: ${backup}`)
 }
 
-const rows = db.prepare('select id, content, raw from messages').all()
+const rows = db.prepare('select id, role, content, raw from messages').all()
 let changed = 0
+let deleted = 0
 let reasoningStripped = 0
 
 const update = db.prepare('update messages set content = ?, content_seg = ?, raw = ? where id = ?')
+const remove = db.prepare('delete from messages where id = ?')
 
 db.exec('begin immediate')
 try {
@@ -45,6 +51,19 @@ try {
     }
     const blocks = Array.isArray(message.content) ? message.content : []
     const content = flattenContent(blocks)
+
+    // Tool results are not conversation; injected user-role context (time,
+    // goal rounds, runtime snapshots) is not a human prompt either.
+    const injected = row.role === 'user' && message.source?.kind !== 'user'
+    const notConversation = row.role === 'tool' || injected || content.trim().length === 0
+    if (notConversation) {
+      if (!keepTools) {
+        deleted += 1
+        if (!dryRun) remove.run(row.id)
+        continue
+      }
+    }
+
     let raw = row.raw
     if (!keepReasoning) {
       const filtered = blocks.filter((block) => block?.type !== 'reasoning')
@@ -67,5 +86,7 @@ try {
 }
 
 if (!dryRun) rebuildIndexes(db)
-console.log(`rows: ${rows.length}, changed: ${changed}, reasoning stripped: ${reasoningStripped}${dryRun ? ' (dry run)' : ''}`)
+console.log(
+  `rows: ${rows.length}, updated: ${changed}, deleted: ${deleted}, reasoning stripped: ${reasoningStripped}${dryRun ? ' (dry run)' : ''}`,
+)
 db.close()

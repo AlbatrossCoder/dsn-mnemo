@@ -273,6 +273,8 @@ for await (const chunk of ctx.llm.stream({
 - `package.json` 必须是**无 BOM 的 UTF-8**：带 BOM 时 DSH 读取包清单失败并把插件行静默禁用（桌面端表现为完全不加载）。
 - `recall` 的输出 schema 与返回对象不一致（返回带 `id`，schema 未声明）会触发 `additionalProperties: false` 校验错误；已在 schema 中声明 `id`，并用 DSH 自带的 `validateJsonSchemaValue` 锁定返回字段集合。
 - 本插件同时是**可安装的组合包**：`cordis.patch.yml` + `package.json` 的 `dsh.bundle.patch`；用临时 profile（`dsh.profile.bundles: ["@deepseek-ai/dsh-base", "dsn-mnemo"]`）`--dump-config` 已验证能组合出 `- id: dsn-mnemo` 行，市场索引样例也能通过 DSH 的 `parseMarketIndex` 校验。
+- **L0 语义修正（0.6.6，未发布）**：L0 只记聊天内容。recorder 现在只收 `user/message`（且 `source.kind === 'user'`）与 `assistant/message` 的可见文本；思考、工具调用、工具结果、注入上下文（time-context / goal / runtime-context / skill-catalog）一律不入库。`scripts/repair-messages.mjs --prune-tools` 可把历史库清理成同一语义（会先 `VACUUM INTO` 备份）。
+- **多用户（QQ 群）分析**见 [docs/multi-user.md](docs/multi-user.md)：QQ 事件本身带稳定的 `user_id`/`group_id`，可辨别用户；但插件目前不接收身份，需要桥传 `source`，并按方案 A（一人一会话）或方案 B（一群一会话 + speaker/subject 维度）改造。
 
 实现备注（P6 期间确认）：
 

@@ -1,13 +1,12 @@
 /**
  * Session event recorder for L0.
  *
- * The recorder subscribes to `session/event` and folds the model-visible
- * surface events into the message table. It never throws: losing a memory row
- * must not break the conversation, so every failure is contained here.
+ * The recorder subscribes to `session/event` and folds **conversation** into
+ * the message table: human prompts and the assistant's visible replies. It
+ * never throws: losing a memory row must not break the conversation.
  *
- * Visibility events captured: `user/message`, `assistant/message`,
- * `tool/result`. System/developer messages are not memories and are skipped;
- * the diary layer only ever looks at human and assistant words.
+ * Not recorded, by design: reasoning, tool calls, and tool results. L0 is a
+ * chat log; the diary layer is what turns it into long-term memory.
  *
  * @module dsn-mnemo/session/recorder
  */
@@ -25,6 +24,7 @@ interface MessageShape {
   readonly role?: unknown
   readonly id?: unknown
   readonly content?: unknown
+  readonly source?: { readonly kind?: unknown }
 }
 
 function asMessage(value: unknown): MessageShape | undefined {
@@ -35,11 +35,19 @@ function roleOf(message: MessageShape): MessageRole | undefined {
   switch (message.role) {
     case 'user':
     case 'assistant':
-    case 'tool':
       return message.role
+    // Tool results are not conversation; they are skipped before flattening.
     default:
       return undefined
   }
+}
+
+/**
+ * User-role messages also carry injected context (time, goal rounds, runtime
+ * snapshots, skill catalogs). Only `source.kind === 'user'` is a human prompt.
+ */
+function isHumanPrompt(message: MessageShape): boolean {
+  return message.source?.kind === 'user'
 }
 
 /** Options for what L0 keeps beyond the searchable text. */
@@ -85,16 +93,17 @@ export class SessionRecorder {
           this.turns.delete(session.id)
           return
         case 'user/message':
-        case 'assistant/message':
-        case 'tool/result': {
+        case 'assistant/message': {
           const payload = event.data as { message?: unknown; turn?: number }
           const message = asMessage(event.type === 'user/message' ? event.data : payload.message)
           if (message === undefined) return
           const role = roleOf(message)
           if (role === undefined) return
+          if (role === 'user' && !isHumanPrompt(message)) return
           const turn = payload.turn ?? this.turns.get(session.id) ?? 0
           touchSession(this.db, session.id, turn)
           const content = flattenContent(Array.isArray(message.content) ? message.content : [])
+          // A pure tool-call step has no visible text; nothing was said.
           if (content.length === 0) return
           const stored = this.storeReasoning ? message : withoutReasoning(message)
           insertMessage(this.db, {
