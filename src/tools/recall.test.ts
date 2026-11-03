@@ -58,6 +58,23 @@ test('log scope returns role-tagged transcript lines', () => {
   }
 })
 
+test('recall spans sessions', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 's-old', 1)
+    touchSession(db, 's-new', 1)
+    insertMessage(db, { sessionId: 's-old', seq: 1, turn: 1, role: 'user', content: '上次一起看了海', raw: '{}' })
+    insertMessage(db, { sessionId: 's-new', seq: 1, turn: 1, role: 'user', content: '今天又提起看海', raw: '{}' })
+
+    const hits = recall(db, '看海', 'log', 10, NOW)
+    const sessions = new Set(hits.map((hit) => hit.text))
+    assert.equal(hits.length, 2)
+    assert.equal(sessions.size, 2)
+  } finally {
+    db.close()
+  }
+})
+
 test('recall returns an empty list for unmatched or empty queries', () => {
   const db = openDatabase(':memory:')
   try {
