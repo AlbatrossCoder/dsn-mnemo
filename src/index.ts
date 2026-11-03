@@ -1,4 +1,4 @@
-﻿import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -14,6 +14,7 @@ import { SessionRecorder } from './session/recorder.js'
 import { anchorsInWindow } from './store/anchor-store.js'
 import { refreshRelationStage } from './store/relation.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
+import { createConsolidateTool } from './tools/diary-consolidate.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
 import { createRecallTool } from './tools/recall.js'
 
@@ -46,11 +47,11 @@ export type MnemoConfig = Schemastery.TypeT<typeof Config>
 const VERSION = '0.6.1'
 
 /**
- * Record a load-time failure where a human can find it. The loader reports
- * plugin failures only to its own console, which a desktop launch does not
- * expose, so a failed mount would otherwise be invisible.
+ * Record a failure where a human can find it. The loader reports plugin
+ * failures only to its own console, which a desktop launch does not expose,
+ * so a failed mount or a failed diary judgement would otherwise be invisible.
  */
-function recordLoadError(error: unknown): void {
+function recordError(error: unknown): void {
   try {
     const dir = join(homedir(), '.dsh', 'mnemo')
     mkdirSync(dir, { recursive: true })
@@ -72,7 +73,7 @@ export function apply(ctx: Context, config: MnemoConfig): void {
   try {
     setup(ctx, config)
   } catch (error) {
-    recordLoadError(error)
+    recordError(error)
     throw error
   }
 }
@@ -86,6 +87,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
     idleMs: config.diaryIdleMinutes * 60_000,
     maxPerSession: config.diaryMaxPerSession,
     personaHint: config.diaryPersonaHint,
+    onError: recordError,
     generate: async (prompt) => {
       const stream = ctx.llm.stream({
         provider: config.diaryProvider,
@@ -165,6 +167,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
   ctx.tools.register(createAnchorTool(db))
   ctx.tools.register(createDiaryWriteTool(db))
   ctx.tools.register(createDiaryUpdateTool(db))
+  ctx.tools.register(createConsolidateTool(db, { flush: (sessionId) => engine.flush(sessionId) }))
 
   // Dynamic context: one contribution per live agent, so the text can be
   // derived from that agent's own latest human message. It is replaced every

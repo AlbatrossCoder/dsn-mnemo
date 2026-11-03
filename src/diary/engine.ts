@@ -33,6 +33,8 @@ export interface DiaryEngineOptions {
   readonly personaHint?: string
   readonly scheduler?: Scheduler
   readonly now?: () => Date
+  /** Observes judgement failures; the engine never throws them upward. */
+  readonly onError?: (error: unknown) => void
 }
 
 interface MessageRow {
@@ -122,8 +124,9 @@ export class DiaryEngine {
         typeTags: decision.tags,
       })
       return true
-    } catch {
+    } catch (error) {
       // A failed judgement must never surface to the conversation.
+      this.options.onError?.(error)
       return false
     }
   }

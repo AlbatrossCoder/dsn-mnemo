@@ -92,6 +92,7 @@ $pnpm = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnp
 | `recall` | `query`、`scope: diary \| log`、`limit?` | 深掘记忆：日记走 BM25+重要度+近因，日志走词面检索 |
 | `diary_write` | `content`、`importance?`、`emotion?`、`tags?` | 手动写一篇日记（后台引擎也会自动写） |
 | `diary_update` | `id`、`content`、`reason` | 纠正日记；必须给理由，旧正文进 `diary_revisions` |
+| `diary_consolidate` | — | 立即对当前会话跑一次日记判断（不等空闲计时） |
 | `anchor_upsert` | `event_name`、`target_date`、`window_days?`、`tone_hint?` | 录入锚点（`YYYY-MM-DD`，会校验真实日历日） |
 | `mnemo_ping` | — | 健康检查：返回版本与数据库路径 |
 
