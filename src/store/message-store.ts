@@ -9,7 +9,7 @@
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { cjkChars } from '../db/char-search.js'
-import { buildMatchQuery, segment } from '../db/segment.js'
+import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
 
@@ -77,19 +77,34 @@ export function countMessages(db: DatabaseSync): number {
 /**
  * Keyword search over logged messages.
  *
- * Falls back to character matching when the segmented query finds nothing, so
- * a rephrased recall still reaches the original words.
+ * The precise AND query runs first; when it cannot fill the page, an OR query
+ * widens the net (a long sentence otherwise requires every token to appear in
+ * one message). Character matching is the last resort for rephrasings.
  *
  * @param query - raw query text, segmented with the index tokenizer.
- * @param limit - maximum hits after BM25 ordering.
+ * @param limit - maximum hits after ordering.
  */
 export function searchMessages(db: DatabaseSync, query: string, limit = 5): MessageHit[] {
-  const match = buildMatchQuery(query)
-  if (match !== null) {
-    const hits = searchMessagesByMatch(db, match, limit)
-    if (hits.length > 0) return hits
+  const hits: MessageHit[] = []
+  const seen = new Set<number>()
+  const push = (batch: MessageHit[]): void => {
+    for (const hit of batch) {
+      if (seen.has(hit.id)) continue
+      seen.add(hit.id)
+      hits.push(hit)
+    }
   }
-  return searchMessagesByCharacters(db, query, limit)
+
+  const andMatch = buildMatchQuery(query)
+  if (andMatch !== null) push(searchMessagesByMatch(db, andMatch, limit))
+
+  if (hits.length < limit) {
+    const orMatch = buildAnyMatchQuery(query)
+    if (orMatch !== null) push(searchMessagesByMatch(db, orMatch, limit))
+  }
+
+  if (hits.length === 0) return searchMessagesByCharacters(db, query, limit)
+  return hits.slice(0, limit)
 }
 
 function searchMessagesByMatch(db: DatabaseSync, match: string, limit: number): MessageHit[] {

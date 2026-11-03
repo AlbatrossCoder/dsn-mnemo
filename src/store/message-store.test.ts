@@ -44,8 +44,10 @@ test('searchMessages finds Chinese content and reports role', () => {
     })
 
     const hits = searchMessages(db, '记忆系统')
-    assert.equal(hits.length, 1)
+    assert.ok(hits.length >= 1)
+    // The precise AND match ranks first; the OR pass may add the looser one.
     assert.equal(hits[0]?.role, 'user')
+    assert.match(hits[0]?.content ?? '', /记忆系统/)
     assert.equal(typeof hits[0]?.rank, 'number')
     assert.deepEqual(searchMessages(db, '  '), [])
   } finally {

@@ -68,21 +68,61 @@ export function rankDiaries(db: DatabaseSync, query: string, limit: number, now 
   return rankDiaryHits(searchDiaries(db, query, limit * 2), limit, now)
 }
 
-/** Rank transcript messages by BM25 and recency. */
-export function rankLogs(db: DatabaseSync, query: string, limit: number, now = new Date()): RecallHit[] {
-  const hits = searchMessages(db, query, limit * 2)
+/**
+ * Rank transcript messages by BM25 and recency.
+ *
+ * @param excludeSessionId - the calling session, whose content the model can
+ *   already see; excluding it keeps recall focused on older conversations and
+ *   stops it from matching its own tool-call transcript.
+ */
+export function rankLogs(
+  db: DatabaseSync,
+  query: string,
+  limit: number,
+  now = new Date(),
+  excludeSessionId?: string,
+): RecallHit[] {
+  const hits = searchMessages(db, query, limit * 5).filter(
+    (hit) =>
+      hit.sessionId !== excludeSessionId &&
+      // Tool-call echoes make a recall query match its own call record; they are
+      // never the memory a user means when asking about the past.
+      !(hit.role === 'assistant' && hit.content.trimStart().startsWith('[call ')),
+  )
   if (hits.length === 0) return []
   const bm = normalise(hits.map((hit) => hit.rank))
-  return hits
+  const scored = hits
     .map((hit) => ({
-      source: 'log' as const,
-      id: hit.id,
-      text: `[${hit.role}] ${hit.content}`,
+      hit,
       score: 0.85 * bm(hit.rank) + 0.15 * recency(hit.createdAt, now),
-      when: hit.createdAt,
     }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
+
+  // Round-robin across sessions: a recall for old conversations must not be
+  // monopolised by this session's own tool-call echoes.
+  const bySession = new Map<string, typeof scored>()
+  for (const item of scored) {
+    const list = bySession.get(item.hit.sessionId) ?? []
+    list.push(item)
+    bySession.set(item.hit.sessionId, list)
+  }
+  const queues = [...bySession.values()]
+  const out: RecallHit[] = []
+  while (out.length < limit && queues.some((queue) => queue.length > 0)) {
+    for (const queue of queues) {
+      const next = queue.shift()
+      if (next === undefined) continue
+      out.push({
+        source: 'log',
+        id: next.hit.id,
+        text: `[${next.hit.role}] ${next.hit.content}`,
+        score: next.score,
+        when: next.hit.createdAt,
+      })
+      if (out.length >= limit) break
+    }
+  }
+  return out
 }
 
 /** Run one recall query; never throws. */
@@ -92,9 +132,12 @@ export function recall(
   scope: RecallScope,
   limit: number,
   now = new Date(),
+  excludeSessionId?: string,
 ): RecallHit[] {
   try {
-    return scope === 'log' ? rankLogs(db, query, limit, now) : rankDiaries(db, query, limit, now)
+    return scope === 'log'
+      ? rankLogs(db, query, limit, now, excludeSessionId)
+      : rankDiaries(db, query, limit, now)
   } catch {
     return []
   }
@@ -106,7 +149,7 @@ export function createRecallTool(db: DatabaseSync, options: RecallOptions) {
   return defineTool({
     name: 'recall',
     description:
-      'Search mnemo memory when the user references the past, or when an earlier detail would change the answer. scope=diary searches distilled diaries; scope=log searches the raw transcript. Returns an empty list when nothing matches.',
+      'Search mnemo memory when the user references the past, or when an earlier detail would change the answer. scope=diary searches distilled diaries; scope=log searches transcripts from earlier sessions (the current conversation is already in context). Returns an empty list when nothing matches.',
     parameters: {
       query: {
         type: 'string',
@@ -158,11 +201,11 @@ export function createRecallTool(db: DatabaseSync, options: RecallOptions) {
         ]
       },
     },
-    async execute(args) {
+    async execute(args, exec) {
       const scope: RecallScope = args.scope === 'log' ? 'log' : 'diary'
       const fallback = scope === 'log' ? options.logLimit : options.diaryLimit
       const limit = typeof args.limit === 'number' && args.limit > 0 ? Math.min(args.limit, 50) : fallback
-      return { scope, results: recall(db, args.query, scope, limit, now()) }
+      return { scope, results: recall(db, args.query, scope, limit, now(), exec.agent?.session.id) }
     },
   })
 }

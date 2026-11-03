@@ -45,7 +45,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.6.3'
+const VERSION = '0.6.4'
 
 /**
  * Optional diary trace, enabled by `diaryDebug`. It sits next to the database

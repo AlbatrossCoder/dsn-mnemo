@@ -27,9 +27,10 @@ function flattenBlock(block: BlockLike): string {
     case 'reasoning':
       return ''
     case 'tool-call': {
+      // Keep the call visible but drop its arguments: echoing them makes a
+      // later recall query match its own call record.
       const name = typeof block.name === 'string' ? block.name : 'unknown'
-      const args = typeof block.arguments === 'string' ? block.arguments : ''
-      return `[call ${name}] ${args}`.trim()
+      return `[call ${name}]`
     }
     case 'image':
       return '[image]'

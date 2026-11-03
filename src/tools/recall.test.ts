@@ -58,6 +58,47 @@ test('log scope returns role-tagged transcript lines', () => {
   }
 })
 
+test('log recall keeps sessions diverse', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 'loud', 1)
+    touchSession(db, 'quiet', 1)
+    for (let seq = 1; seq <= 5; seq += 1) {
+      insertMessage(db, {
+        sessionId: 'loud',
+        seq,
+        turn: 1,
+        role: 'user',
+        content: `记忆系统 第 ${seq} 条`,
+        raw: '{}',
+      })
+    }
+    insertMessage(db, { sessionId: 'quiet', seq: 1, turn: 1, role: 'user', content: '记忆系统 只此一条', raw: '{}' })
+
+    const hits = rankLogs(db, '记忆系统', 2, NOW)
+    assert.equal(hits.length, 2)
+    assert.ok(hits.some((hit) => hit.text.includes('只此一条')), JSON.stringify(hits))
+  } finally {
+    db.close()
+  }
+})
+
+test('log recall excludes the calling session', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 'current', 1)
+    touchSession(db, 'older', 1)
+    insertMessage(db, { sessionId: 'current', seq: 1, turn: 1, role: 'user', content: '当前会话聊记忆系统', raw: '{}' })
+    insertMessage(db, { sessionId: 'older', seq: 1, turn: 1, role: 'user', content: '上次会话聊记忆系统', raw: '{}' })
+
+    const hits = recall(db, '记忆系统', 'log', 5, NOW, 'current')
+    assert.equal(hits.length, 1)
+    assert.match(hits[0]?.text ?? '', /上次会话/)
+  } finally {
+    db.close()
+  }
+})
+
 test('recall spans sessions', () => {
   const db = openDatabase(':memory:')
   try {
