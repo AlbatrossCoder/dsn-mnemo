@@ -1,5 +1,5 @@
 /**
- * Validate the example market index with the same validator DSH uses.
+ * Validate a market index with the same validator DSH uses.
  *
  *   node scripts/validate-market-index.mjs [path]
  *
@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs'
 import { parseMarketIndex } from '@deepseek-ai/dsh-plugin-market-index'
 
-const path = process.argv[2] ?? 'docs/market-index.example.json'
+const path = process.argv[2] ?? 'market-index.json'
 const document = JSON.parse(readFileSync(path, 'utf8'))
 const index = parseMarketIndex(document, 'https://example.com/plugins.json')
 

@@ -8,7 +8,7 @@
  * @module dsn-mnemo/store/message-store
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { cjkChars } from '../db/char-search.js'
+import { CHAR_FALLBACK_RANK, CHAR_FALLBACK_SCAN_LIMIT, cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
 import type { SubjectRef } from './diary-store.js'
 
@@ -121,7 +121,8 @@ export function countMessages(db: DatabaseSync): number {
  *
  * The precise AND query runs first; when it cannot fill the page, an OR query
  * widens the net (a long sentence otherwise requires every token to appear in
- * one message). Character matching is the last resort for rephrasings.
+ * one message). Character matching is the last resort for rephrasings, and it
+ * also tops the page up when the FTS passes leave gaps.
  *
  * @param query - raw query text, segmented with the index tokenizer.
  * @param limit - maximum hits after ordering.
@@ -150,7 +151,7 @@ export function searchMessages(
     if (orMatch !== null) push(searchMessagesByMatch(db, orMatch, limit, subject))
   }
 
-  if (hits.length === 0) return searchMessagesByCharacters(db, query, limit, subject)
+  if (hits.length < limit) push(searchMessagesByCharacters(db, query, limit, subject))
   return hits.slice(0, limit)
 }
 
@@ -197,12 +198,12 @@ function searchMessagesByCharacters(
   const filter = subjectClause(subject)
   const rows = db
     .prepare(
-      `select m.id, m.session_id, m.seq, m.turn, m.role, m.speaker_id, m.content, m.created_at, 0 as rank
+      `select m.id, m.session_id, m.seq, m.turn, m.role, m.speaker_id, m.content, m.created_at, ${CHAR_FALLBACK_RANK} as rank
          from messages m
          join sessions s on s.id = m.session_id
         where (${where}) ${filter.sql}
-        order by m.created_at desc
-        limit 50`,
+        order by m.id desc
+        limit ${CHAR_FALLBACK_SCAN_LIMIT}`,
     )
     .all(...chars.map((char) => `%${char}%`), ...filter.params) as unknown as MessageRow[]
 

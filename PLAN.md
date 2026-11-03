@@ -256,7 +256,7 @@ for await (const chunk of ctx.llm.stream({
 
 | 阶段 | 状态 | 证据 |
 |---|---|---|
-| P0 | ✅ | patch `insert` 装载成功；桌面端模型调用 `mnemo_ping` 返回 `mnemo 0.1.0 ok (C:/Users/admin/.dsh/mnemo/mnemo.db)`；`scripts/harness-test.mjs` 在裸 Cordis + `ToolRuntime` 里注册并执行通过 |
+| P0 | ✅ | patch `insert` 装载成功；桌面端模型调用 `mnemo_ping` 返回 `mnemo 0.1.0 ok (<用户目录>/.dsh/mnemo/mnemo.db)`；`scripts/harness-test.mjs` 在裸 Cordis + `ToolRuntime` 里注册并执行通过 |
 | P1 | ✅ | `node --test "lib/**/*.test.js"` 15/15；覆盖迁移幂等、外键约束、2 字/多字中文命中、`bm25` 排序、索引重建、空库与纯标点查询 |
 | P2 | ✅ | `session/event` → L0 落库、`recall` 双 scope 已实现；`scripts/harness-test.mjs` 用**真实 SessionStore** 驱动事件，L0 能落库并被 `recall` 命中；单测 29/29。桌面端需重启后才加载 0.2.0 |
 | P3 | ✅ | `systemPrompt.section('mnemo:rules', order 30)` 稳定前缀 + `anchors` 日期窗口 + `anchor_upsert` 工具；harness 用真实 `systemPrompt.assemble()` 验证「同日两次结果字节一致」「锚点写入后出现」；单测 42/42。桌面端需重启后才加载 0.3.0 |
@@ -479,6 +479,20 @@ P0 的第一条命令是备份 patch，不是写代码：
 Copy-Item "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" `
           "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml.bak"
 ```
+
+---
+
+## 12. 版本与发布规则
+
+三段式版本号 `major.minor.patch`（如 `0.7.0`）：
+
+| 位 | 何时变 | 谁控制 |
+|---|---|---|
+| `patch`（第三位） | 每次迭代只加这一位，支持两位数（`0.7.9 → 0.7.10 → … → 0.7.99`） | 常规迭代 |
+| `minor`（第二位） | 大改动才加；加的时候 `patch` 归零 | 常规迭代 |
+| `major`（第一位） | 仅重大（破坏性）变更；人为控制 | 人工拍板 |
+
+发布纪律（延续）：**先测后发、先问再发**——改代码 → 构建 + 单测 + harness → 真机冒烟 → 向所有者说明版本号与改动 → 得到同意后才 `npm publish`。仓库 `package.json` 是「下一版」，`market-index.json` 只反映**已发布**到线上的版本（当前线上 `latest = 0.6.6`，下一版 `0.7.0`）。
 
 ---
 

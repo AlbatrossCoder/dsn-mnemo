@@ -27,18 +27,38 @@ export function segment(text: string): string {
 const NOISE = /^[\p{P}\p{S}\s]+$/u
 
 /**
+ * Single-character Han words that add noise, not signal, to a query. A whole
+ * sentence such as 「我们上次聊了什么」 is mostly these; requiring them all
+ * (AND) or letting any of them widen the OR net both drown the real keywords.
+ * Keep any token that contains at least one *meaningful* Han character so
+ * words like 「难过」 still survive even though 「过」 alone would be dropped.
+ */
+const QUERY_STOPWORDS = new Set('的了是在我有和就不没都会要你他她它吗呢吧啊很太这那也还个上下着过把被让给对从到说想'.split(''))
+
+/** True when a token deserves a slot in an FTS query. */
+function isSearchableToken(token: string): boolean {
+  if (token.length === 0 || NOISE.test(token)) return false
+  return [...token].some((char) => /[\u3400-\u9fff]/u.test(char) && !QUERY_STOPWORDS.has(char))
+}
+
+/** Segment raw text into meaningful query tokens, dropping filler. */
+function queryTokens(text: string): string[] {
+  const tokens: string[] = []
+  for (const piece of segmenter.segment(text)) {
+    const token = piece.segment.trim()
+    if (isSearchableToken(token)) tokens.push(token)
+  }
+  return tokens
+}
+
+/**
  * Build an FTS5 MATCH expression from free text (implicit AND).
  *
  * @param text - raw user or model query.
  * @returns a quoted AND query, or `null` when nothing searchable remains.
  */
 export function buildMatchQuery(text: string): string | null {
-  const tokens: string[] = []
-  for (const piece of segmenter.segment(text)) {
-    const token = piece.segment.trim()
-    if (token.length === 0 || NOISE.test(token)) continue
-    tokens.push(token)
-  }
+  const tokens = queryTokens(text)
   if (tokens.length === 0) return null
   return tokens.map((token) => `"${token.replace(/"/g, '""')}"`).join(' ')
 }
@@ -51,7 +71,7 @@ export function buildMatchQuery(text: string): string | null {
  * @returns a quoted OR query, or `null` when nothing searchable remains.
  */
 export function buildAnyMatchQuery(text: string): string | null {
-  const match = buildMatchQuery(text)
-  if (match === null) return null
-  return match.split(' ').join(' OR ')
+  const tokens = queryTokens(text)
+  if (tokens.length === 0) return null
+  return tokens.map((token) => `"${token.replace(/"/g, '""')}"`).join(' OR ')
 }

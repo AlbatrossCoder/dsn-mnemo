@@ -51,7 +51,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.8.0'
+const VERSION = '0.7.0'
 
 /**
  * Optional diary trace, enabled by `diaryDebug`. It sits next to the database
@@ -151,8 +151,8 @@ function setup(ctx: Context, config: MnemoConfig): void {
     }
   })
 
-  // Stable prefix: rules + anchors inside today's window. Everything here is
-  // deterministic for a given day, so the cached request prefix stays intact.
+  // Stable prefix: memory rules only. Anchors are injected per agent below, so
+  // this block stays byte-stable for a given day and the cached prefix holds.
   ctx.systemPrompt.section({
     name: 'mnemo:rules',
     order: 30,

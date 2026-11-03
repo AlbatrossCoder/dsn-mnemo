@@ -11,7 +11,7 @@
  * @module dsn-mnemo/store/diary-store
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { cjkChars } from '../db/char-search.js'
+import { CHAR_FALLBACK_RANK, CHAR_FALLBACK_SCAN_LIMIT, cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
 
 export type SubjectKind = 'user' | 'group'
@@ -105,14 +105,6 @@ export function countDiaries(db: DatabaseSync): number {
   return row?.total ?? 0
 }
 
-/** Number of diaries written for one subject. */
-export function countDiariesFor(db: DatabaseSync, subject: SubjectRef): number {
-  const row = db
-    .prepare('select count(*) as total from diaries where subject_kind = ? and subject_id = ?')
-    .get(subject.kind, subject.id) as { total: number } | undefined
-  return row?.total ?? 0
-}
-
 /** Number of diaries written for one subject today (local calendar day). */
 export function countDiariesForToday(db: DatabaseSync, subject: SubjectRef): number {
   const row = db
@@ -146,12 +138,20 @@ export function searchDiaries(
   mode: 'and' | 'or' = 'and',
   subject?: SubjectRef,
 ): DiaryHit[] {
-  const match = mode === 'or' ? buildAnyMatchQuery(query) : buildMatchQuery(query)
-  if (match !== null) {
-    const hits = searchDiariesByMatch(db, match, limit, subject)
-    if (hits.length > 0) return hits
+  const hits: DiaryHit[] = []
+  const seen = new Set<number>()
+  const push = (batch: DiaryHit[]): void => {
+    for (const hit of batch) {
+      if (seen.has(hit.id)) continue
+      seen.add(hit.id)
+      hits.push(hit)
+    }
   }
-  return searchDiariesByCharacters(db, query, limit, subject)
+
+  const match = mode === 'or' ? buildAnyMatchQuery(query) : buildMatchQuery(query)
+  if (match !== null) push(searchDiariesByMatch(db, match, limit, subject))
+  if (hits.length < limit) push(searchDiariesByCharacters(db, query, limit, subject))
+  return hits.slice(0, limit)
 }
 
 /**
@@ -177,11 +177,11 @@ function searchDiariesByCharacters(
   if (subject !== undefined) params.push(subject.kind, subject.id)
   const rows = db
     .prepare(
-      `select id, content, importance, emotion, type_tags, subject_kind, subject_id, visibility, created_at, 0 as rank
+      `select id, content, importance, emotion, type_tags, subject_kind, subject_id, visibility, created_at, ${CHAR_FALLBACK_RANK} as rank
          from diaries
         where (${where}) ${subjectSql}
-        order by created_at desc
-        limit 50`,
+        order by id desc
+        limit ${CHAR_FALLBACK_SCAN_LIMIT}`,
     )
     .all(...params) as unknown as DiaryRow[]
 

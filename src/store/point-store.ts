@@ -8,7 +8,7 @@
  * @module dsn-mnemo/store/point-store
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { cjkChars } from '../db/char-search.js'
+import { CHAR_FALLBACK_RANK, CHAR_FALLBACK_SCAN_LIMIT, cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
 import { insertDiary, type SubjectRef } from './diary-store.js'
 
@@ -216,22 +216,8 @@ export function searchPoints(
     const orMatch = buildAnyMatchQuery(query)
     if (orMatch !== null) push(searchPointsByMatch(db, orMatch, subject, limit))
   }
-  if (hits.length === 0) push(searchPointsByCharacters(db, query, subject, limit))
+  if (hits.length < limit) push(searchPointsByCharacters(db, query, subject, limit))
   return hits.slice(0, limit)
-}
-
-/** Most recent live points of one subject, newest first. */
-export function listRecentPoints(db: DatabaseSync, subject: SubjectRef, limit = 20): PointHit[] {
-  const rows = db
-    .prepare(
-      `select id, subject_kind, subject_id, kind, text, importance, created_at, expires_at, 0 as rank
-         from memory_points
-        where subject_kind = ? and subject_id = ? and expires_at > datetime('now')
-        order by created_at desc, id desc
-        limit ?`,
-    )
-    .all(subject.kind, subject.id, limit) as unknown as PointRow[]
-  return rows.map(toHit)
 }
 
 function searchPointsByMatch(db: DatabaseSync, match: string, subject: SubjectRef, limit: number): PointHit[] {
@@ -257,11 +243,11 @@ function searchPointsByCharacters(db: DatabaseSync, query: string, subject: Subj
   const where = chars.map(() => 'text like ?').join(' or ')
   const rows = db
     .prepare(
-      `select id, subject_kind, subject_id, kind, text, importance, created_at, expires_at, 0 as rank
+      `select id, subject_kind, subject_id, kind, text, importance, created_at, expires_at, ${CHAR_FALLBACK_RANK} as rank
          from memory_points
         where (${where}) and subject_kind = ? and subject_id = ? and expires_at > datetime('now')
-        order by created_at desc
-        limit 50`,
+        order by id desc
+        limit ${CHAR_FALLBACK_SCAN_LIMIT}`,
     )
     .all(...chars.map((char) => `%${char}%`), subject.kind, subject.id) as unknown as PointRow[]
   return rows

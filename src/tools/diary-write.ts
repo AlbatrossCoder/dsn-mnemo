@@ -22,7 +22,7 @@ export function createDiaryWriteTool(db: DatabaseSync) {
   return defineTool({
     name: 'diary_write',
     description:
-      'Record a diary entry when something is genuinely worth remembering later: a real event, a shift in mood, a promise, or a moment that matters to the relationship. Do not use it for small talk or routine Q&A. Write 2-3 first-person sentences.',
+      'Record a diary entry when something is genuinely worth remembering later — something done, decided, planned, promised, or otherwise useful to recall. Do not use it for small talk or routine Q&A. Write 2-3 first-person sentences.',
     parameters: {
       content: {
         type: 'string',
