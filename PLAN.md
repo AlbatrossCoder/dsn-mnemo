@@ -309,21 +309,36 @@ $node = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\nod
 
 ### 7.4 回填表（PC 实测）
 
+> 实测日期 2026-11-02，Windows 11 x64，用 DSH 自带 Electron 跑 `scripts/probe-runtime.mjs`
+> （`ELECTRON_RUN_AS_NODE=1`）。探针汇总：**9 PASS / 10 项**，唯一 FAIL 是预期的 `vec0`。
+
 | 检查项 | 基线（macOS） | PC 实际 | 一致？ |
 |---|---|---|---|
-| DSH 版本 | 0.2.1-rc.5 | | |
-| Electron / Node | 44.7.0 / 24.21.0 | | |
-| SQLite 版本 | 3.53.4 | | |
-| `node:sqlite` 可导入 | ✅ | | |
-| FTS5 | ✅ | | |
-| 预分词 + FTS5 检索链路 | ✅ | | |
-| `Intl.Segmenter` 中文 | ✅ | | |
-| `vec0` | ❌ | | |
-| WAL 磁盘库 | ✅ | | |
-| profile 目录名 | `desktop` | | |
-| pnpm 路径 | `…/dependencies/pnpm/bin/pnpm.mjs` | | |
-| patch `insert` + `file://` 能加载插件 | 未测（P0 验证） | | |
-| HMR 对 patch 的生效延迟 | 文档称约 2 秒 | | |
+| DSH 版本 | 0.2.1-rc.5 | 0.2.1-rc.5 | ✅ |
+| Electron / Node | 44.7.0 / 24.21.0 | 44.7.0 / 24.21.0 | ✅ |
+| SQLite 版本 | 3.53.4 | 3.53.4 | ✅ |
+| `node:sqlite` 可导入 | ✅ | ✅ | ✅ |
+| FTS5 | ✅ | ✅ | ✅ |
+| 预分词 + FTS5 检索链路 | ✅ | ✅（长查询 1 命中 / 2 字 1 命中 / bm25 正常） | ✅ |
+| `Intl.Segmenter` 中文 | ✅ | ✅（`今天\|和\|主人\|聊\|了\|记忆\|系统\|的\|设计`） | ✅ |
+| `vec0` | ❌ | ❌（`no such module: vec0`） | ✅（与预期一致） |
+| WAL 磁盘库 | ✅ | ✅（`journal_mode=wal`） | ✅ |
+| profile 目录名 | `desktop` | `desktop` | ✅ |
+| pnpm 路径 | `…/dependencies/pnpm/bin/pnpm.mjs` | 同路径，v11.28.5 | ✅ |
+| patch `insert` + `file://` 能加载插件 | 未测（P0 验证） | 未测（待 P0） | — |
+| HMR 对 patch 的生效延迟 | 文档称约 2 秒 | 未测 | — |
+
+**其余环境事实（PC，2026-11-02）**
+
+- 系统 PATH 里**没有** `node` / `npm` / `git`；可用的替代：
+  - Node 24.21.0：`%USERPROFILE%\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe`
+  - pnpm 11.28.5：同目录 `…/dependencies/pnpm/bin/pnpm.mjs`
+  - git 2.56：`%LOCALAPPDATA%\GitHubDesktop\app-3.6.10\resources\app\git\cmd\git.exe`
+- npm registry 可达；`@deepseek-ai/*@0.2.1-rc.5` 已发布（`next` tag，`latest` 是旧的 0.0.1-rc.1，**装依赖要显式写版本**）。
+- 已实测：`pnpm add -D @deepseek-ai/dsh-tools@0.2.1-rc.5 @deepseek-ai/cordis@4.0.5 @deepseek-ai/schemastery@3.18.5 typescript` → `tsc` 编译一个含 `defineTool` + `Config` 的最小插件通过，产物无 `export default`；`node --test` + `node:sqlite` + FTS5 通过。
+- DSH 的插件 API 文档与 `.d.ts` 全在 `app.asar` 内（`dsh/node_modules/@deepseek-ai/<pkg>/README.zh.md`），可用附录 A 提取，无需外网。
+- 注意：Electron 是 GUI 子系统程序，PowerShell 直接 `&` 调用拿不到 stdout，要用
+  `Start-Process -Wait -RedirectStandardOutput/-RedirectStandardError`（本次探针即如此运行）。
 
 不一致时的处置：版本差异不影响架构；**只有 `node:sqlite` / FTS5 / `Intl.Segmenter` 三项失败才需要改方案**，此时先在本文档记录，再讨论退路（退路顺序：trigram 兜底 → 自带 better-sqlite3 → 放弃 FTS 改内存索引）。
 
