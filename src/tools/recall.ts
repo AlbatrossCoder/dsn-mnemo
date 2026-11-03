@@ -9,17 +9,24 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
-import { searchDiaries, type DiaryHit } from '../store/diary-store.js'
-import { searchMessages } from '../store/message-store.js'
+import { searchDiaries, type DiaryHit, type SubjectRef } from '../store/diary-store.js'
+import { searchMessages, sessionSubject } from '../store/message-store.js'
 
 export type RecallScope = 'diary' | 'log'
+export type RecallSource = RecallScope | 'point'
 
 export interface RecallHit {
-  readonly source: RecallScope
+  readonly source: RecallSource
   readonly id: number
   readonly text: string
   readonly score: number
   readonly when: string
+}
+
+/** Rough token estimate: one CJK character or four Latin characters. */
+export function estimateTokens(text: string): number {
+  const cjk = (text.match(/[\u3400-\u9fff]/g) ?? []).length
+  return Math.ceil(cjk + (text.length - cjk) / 4)
 }
 
 export interface RecallOptions {
@@ -64,8 +71,14 @@ export function rankDiaryHits(hits: readonly DiaryHit[], limit: number, now: Dat
 }
 
 /** Rank diaries by BM25, importance, and recency. */
-export function rankDiaries(db: DatabaseSync, query: string, limit: number, now = new Date()): RecallHit[] {
-  return rankDiaryHits(searchDiaries(db, query, limit * 2), limit, now)
+export function rankDiaries(
+  db: DatabaseSync,
+  query: string,
+  limit: number,
+  now = new Date(),
+  subject?: SubjectRef,
+): RecallHit[] {
+  return rankDiaryHits(searchDiaries(db, query, limit * 2, 'and', subject), limit, now)
 }
 
 /**
@@ -81,8 +94,9 @@ export function rankLogs(
   limit: number,
   now = new Date(),
   excludeSessionId?: string,
+  subject?: SubjectRef,
 ): RecallHit[] {
-  const hits = searchMessages(db, query, limit * 5).filter(
+  const hits = searchMessages(db, query, limit * 5, subject).filter(
     (hit) =>
       hit.sessionId !== excludeSessionId &&
       // Tool-call echoes make a recall query match its own call record; they are
@@ -133,11 +147,12 @@ export function recall(
   limit: number,
   now = new Date(),
   excludeSessionId?: string,
+  subject?: SubjectRef,
 ): RecallHit[] {
   try {
     return scope === 'log'
-      ? rankLogs(db, query, limit, now, excludeSessionId)
-      : rankDiaries(db, query, limit, now)
+      ? rankLogs(db, query, limit, now, excludeSessionId, subject)
+      : rankDiaries(db, query, limit, now, subject)
   } catch {
     return []
   }
@@ -177,7 +192,7 @@ export function createRecallTool(db: DatabaseSync, options: RecallOptions) {
               type: 'object',
               properties: {
                 id: { type: 'number' },
-                source: { type: 'string', enum: ['diary', 'log'] },
+                source: { type: 'string', enum: ['diary', 'log', 'point'] },
                 text: { type: 'string' },
                 score: { type: 'number' },
                 when: { type: 'string' },
@@ -205,7 +220,9 @@ export function createRecallTool(db: DatabaseSync, options: RecallOptions) {
       const scope: RecallScope = args.scope === 'log' ? 'log' : 'diary'
       const fallback = scope === 'log' ? options.logLimit : options.diaryLimit
       const limit = typeof args.limit === 'number' && args.limit > 0 ? Math.min(args.limit, 50) : fallback
-      return { scope, results: recall(db, args.query, scope, limit, now(), exec.agent?.session.id) }
+      const sessionId = exec.agent?.session.id
+      const subject = sessionId === undefined ? undefined : sessionSubject(db, sessionId)
+      return { scope, results: recall(db, args.query, scope, limit, now(), sessionId, subject) }
     },
   })
 }

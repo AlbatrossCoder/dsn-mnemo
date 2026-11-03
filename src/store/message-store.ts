@@ -10,6 +10,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
+import type { SubjectRef } from './diary-store.js'
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
 
@@ -125,7 +126,12 @@ export function countMessages(db: DatabaseSync): number {
  * @param query - raw query text, segmented with the index tokenizer.
  * @param limit - maximum hits after ordering.
  */
-export function searchMessages(db: DatabaseSync, query: string, limit = 5): MessageHit[] {
+export function searchMessages(
+  db: DatabaseSync,
+  query: string,
+  limit = 5,
+  subject?: SubjectRef,
+): MessageHit[] {
   const hits: MessageHit[] = []
   const seen = new Set<number>()
   const push = (batch: MessageHit[]): void => {
@@ -137,46 +143,68 @@ export function searchMessages(db: DatabaseSync, query: string, limit = 5): Mess
   }
 
   const andMatch = buildMatchQuery(query)
-  if (andMatch !== null) push(searchMessagesByMatch(db, andMatch, limit))
+  if (andMatch !== null) push(searchMessagesByMatch(db, andMatch, limit, subject))
 
   if (hits.length < limit) {
     const orMatch = buildAnyMatchQuery(query)
-    if (orMatch !== null) push(searchMessagesByMatch(db, orMatch, limit))
+    if (orMatch !== null) push(searchMessagesByMatch(db, orMatch, limit, subject))
   }
 
-  if (hits.length === 0) return searchMessagesByCharacters(db, query, limit)
+  if (hits.length === 0) return searchMessagesByCharacters(db, query, limit, subject)
   return hits.slice(0, limit)
 }
 
-function searchMessagesByMatch(db: DatabaseSync, match: string, limit: number): MessageHit[] {
+function subjectClause(subject: SubjectRef | undefined): { sql: string; params: Array<string | number> } {
+  if (subject === undefined) return { sql: '', params: [] }
+  return {
+    sql: 'and s.kind = ? and s.audience_id = ?',
+    params: [subject.kind === 'group' ? 'group' : 'dm', subject.id],
+  }
+}
+
+function searchMessagesByMatch(
+  db: DatabaseSync,
+  match: string,
+  limit: number,
+  subject?: SubjectRef,
+): MessageHit[] {
+  const filter = subjectClause(subject)
   const rows = db
     .prepare(
       `select m.id, m.session_id, m.seq, m.turn, m.role, m.speaker_id, m.content, m.created_at,
               bm25(messages_fts) as rank
          from messages_fts
          join messages m on m.id = messages_fts.rowid
-        where messages_fts match ?
+         join sessions s on s.id = m.session_id
+        where messages_fts match ? ${filter.sql}
         order by rank
         limit ?`,
     )
-    .all(match, limit) as unknown as MessageRow[]
+    .all(match, ...filter.params, limit) as unknown as MessageRow[]
 
   return rows.map(toHit)
 }
 
-function searchMessagesByCharacters(db: DatabaseSync, query: string, limit: number): MessageHit[] {
+function searchMessagesByCharacters(
+  db: DatabaseSync,
+  query: string,
+  limit: number,
+  subject?: SubjectRef,
+): MessageHit[] {
   const chars = cjkChars(query)
   if (chars.length < 2) return []
-  const where = chars.map(() => 'content like ?').join(' or ')
+  const where = chars.map(() => 'm.content like ?').join(' or ')
+  const filter = subjectClause(subject)
   const rows = db
     .prepare(
-      `select id, session_id, seq, turn, role, speaker_id, content, created_at, 0 as rank
-         from messages
-        where ${where}
-        order by created_at desc
+      `select m.id, m.session_id, m.seq, m.turn, m.role, m.speaker_id, m.content, m.created_at, 0 as rank
+         from messages m
+         join sessions s on s.id = m.session_id
+        where (${where}) ${filter.sql}
+        order by m.created_at desc
         limit 50`,
     )
-    .all(...chars.map((char) => `%${char}%`)) as unknown as MessageRow[]
+    .all(...chars.map((char) => `%${char}%`), ...filter.params) as unknown as MessageRow[]
 
   return rows
     .map((row) => ({ row, matched: chars.filter((char) => row.content.includes(char)).length }))

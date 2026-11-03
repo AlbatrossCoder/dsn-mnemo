@@ -42,7 +42,8 @@ export const Config = z.object({
   diaryDebug: z.boolean().default(false),
   storeReasoning: z.boolean().default(false),
   anchorWindowDays: z.natural().default(2),
-  contextRecallLimit: z.natural().default(3),
+  contextRecallLimit: z.natural().default(20),
+  contextRecallTokens: z.natural().default(600),
   recallDiaryLimit: z.natural().default(5),
   recallLogLimit: z.natural().default(5),
 })
@@ -196,7 +197,10 @@ function setup(ctx: Context, config: MnemoConfig): void {
   // Dynamic context: one contribution per live agent, so the text can be
   // derived from that agent's own latest human message. It is replaced every
   // turn (never accumulated) and lives outside the cached stable prefix.
-  const proactive = createProactiveText(db, { limit: config.contextRecallLimit })
+  const proactive = createProactiveText(db, {
+    limit: config.contextRecallLimit,
+    tokenBudget: config.contextRecallTokens,
+  })
   ctx.on('agent/created', ({ agent }: { agent: Agent }) => {
     agent.ctx.systemPrompt.context({
       name: 'mnemo:recall',

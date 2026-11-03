@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { openDatabase } from '../db/database.js'
 import { insertDiary } from '../store/diary-store.js'
+import { insertPoint } from '../store/point-store.js'
 import {
+  capHits,
   createProactiveText,
   isProactiveTrigger,
   lastHumanTurn,
@@ -44,7 +46,7 @@ test('lastHumanTurn skips injected snapshots and assistant messages', () => {
 test('no trigger yields an empty contribution', () => {
   const db = openDatabase(':memory:')
   try {
-    insertDiary(db, { content: '和主人一起看了海，风很大', importance: 0.9 })
+    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '和主人一起看了海，风很大', importance: 0.9 })
     const provider = createProactiveText(db, { limit: 2, now: () => NOW })
     assert.equal(provider(turn('帮我写一个排序函数')), '')
   } finally {
@@ -55,7 +57,7 @@ test('no trigger yields an empty contribution', () => {
 test('a triggered turn surfaces matching diaries', () => {
   const db = openDatabase(':memory:')
   try {
-    insertDiary(db, { content: '和主人一起看了海，风很大，主人笑了很久', importance: 0.9 })
+    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '和主人一起看了海，风很大，主人笑了很久', importance: 0.9 })
     const provider = createProactiveText(db, { limit: 2, now: () => NOW })
     const text = provider(turn('你还记得上次看海吗', 'm1'))
     assert.match(text, /看了海/)
@@ -68,7 +70,7 @@ test('a triggered turn surfaces matching diaries', () => {
 test('the same diary is not surfaced twice in one session', () => {
   const db = openDatabase(':memory:')
   try {
-    insertDiary(db, { content: '和主人一起看了海，风很大', importance: 0.9 })
+    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '和主人一起看了海，风很大', importance: 0.9 })
     const provider = createProactiveText(db, { limit: 2, now: () => NOW })
     assert.match(provider(turn('还记得看海吗', 'm1')), /看了海/)
     assert.equal(provider(turn('上次看海那天风大吗', 'm2')), '')
@@ -80,13 +82,49 @@ test('the same diary is not surfaced twice in one session', () => {
 test('repeated assemblies for one message are byte-identical', () => {
   const db = openDatabase(':memory:')
   try {
-    insertDiary(db, { content: '一起看了海', importance: 0.9 })
+    insertDiary(db, { subjectKind: 'user', subjectId: 'local', content: '一起看了海', importance: 0.9 })
     const provider = createProactiveText(db, { limit: 2, now: () => NOW })
     const session = turn('还记得看海吗', 'm1')
     assert.equal(provider(session), provider(session))
   } finally {
     db.close()
   }
+})
+
+test('memory points surface alongside diaries by association', () => {
+  const db = openDatabase(':memory:')
+  try {
+    insertPoint(db, {
+      subject: { kind: 'user', id: 'local' },
+      text: '主人下周要交房租，别忘了',
+      importance: 0.9,
+    })
+    const provider = createProactiveText(db, { limit: 20, now: () => NOW })
+    const text = provider(turn('你还记得交房租的事吗', 'm1'))
+    assert.match(text, /房租/)
+    assert.match(text, /记忆点/)
+  } finally {
+    db.close()
+  }
+})
+
+test('capHits enforces both the item cap and the token budget', () => {
+  const hits = Array.from({ length: 30 }, (_, index) => ({
+    source: 'point' as const,
+    id: index,
+    text: 'x'.repeat(100),
+    score: 1,
+    when: '2026-11-01 10:00:00',
+  }))
+  assert.equal(capHits(hits, 20, 600).length, 20)
+  const long = Array.from({ length: 3 }, (_, index) => ({
+    source: 'point' as const,
+    id: index,
+    text: '记'.repeat(600),
+    score: 1,
+    when: '2026-11-01 10:00:00',
+  }))
+  assert.equal(capHits(long, 20, 600).length, 1)
 })
 
 test('renderProactive marks memory as non-authoritative', () => {
