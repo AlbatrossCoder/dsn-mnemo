@@ -2,6 +2,23 @@
 
 DSH 的「插件市场」不是上传中心，而是**索引驱动**：用户添加一个索引 URL，市场按索引里的条目安装对应版本。所以发布 = **发布 npm 包（或 Git 仓库）+ 托管一份索引 JSON**。
 
+## 发布纪律（重要）
+
+**未经仓库所有者明确同意，不得执行 `npm publish`。**
+
+发布前必须逐项确认：
+
+1. `pnpm build` 通过，`node --test "lib/**/*.test.js"` 全绿；
+2. `node scripts/harness-test.mjs`（Electron 运行时）通过；
+3. `pnpm pack` 产物检查：42 个文件、含 `cordis.patch.yml`、不含测试与 sourcemap；
+4. 在真实 DSH 里冒烟过要发布的改动（桌面端重启后验证）；
+5. 向所有者说明「版本号 + 本次改动 + 风险」，**得到同意后**才执行 `npm publish`；
+6. 发布后更新并重新托管 `market-index.json`。
+
+一次只发一个版本；避免为了小改动连续发版（0.6.3 → 0.6.4 → 0.6.5 这种节奏应当避免）。
+
+---
+
 本仓库已经具备所需的一切：
 
 - `package.json` 的 `dsh.bundle.patch` 指向 [cordis.patch.yml](../cordis.patch.yml)，安装后自动向 profile 插入 `dsn-mnemo` 这一行；
