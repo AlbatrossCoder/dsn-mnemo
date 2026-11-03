@@ -178,6 +178,8 @@ DSH 的「插件市场」不是上传中心，而是**索引驱动**的：DSH �
 
 - [PLAN.md](PLAN.md) — 开发计划与交接：环境实测、架构定稿、阶段进度、PC 端验证手册。
 - [DESIGN.md](DESIGN.md) — 原始设计文档；实现与设计不一致处见文末「实现修正」。
+- [docs/publishing.md](docs/publishing.md) — 发布纪律（先测后发、先问再发）与市场索引托管步骤。
+- [docs/multi-user.md](docs/multi-user.md) — 接入 QQ 群等多用户环境的适配分析与迁移草案。
 
 ## 许可
 
