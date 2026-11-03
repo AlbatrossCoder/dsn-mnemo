@@ -5,8 +5,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
-import { openDatabase } from './db/database.js'
+import { dirname, join } from 'node:path'
+import { openDatabase, MEMORY_DB, resolveDbPath } from './db/database.js'
 import { DiaryEngine } from './diary/engine.js'
 import { createProactiveText } from './inject/proactive.js'
 import { formatDate, renderStablePrefix } from './inject/stable-prefix.js'
@@ -28,7 +28,7 @@ export const name = 'mnemo'
  */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'llm']
 
-/** User-facing configuration (mirrors DESIGN.md 鎼?). */
+/** User-facing configuration (mirrors DESIGN.md §8). */
 export const Config = z.object({
   dbPath: z.string().default('~/.dsh/mnemo/mnemo.db'),
   diaryIdleMinutes: z.natural().default(30),
@@ -36,6 +36,7 @@ export const Config = z.object({
   diaryProvider: z.string().default('deepseek-account'),
   diaryModel: z.string().default('deepseek-flash'),
   diaryPersonaHint: z.string().default(''),
+  diaryDebug: z.boolean().default(false),
   anchorWindowDays: z.natural().default(2),
   contextRecallLimit: z.natural().default(3),
   recallDiaryLimit: z.natural().default(5),
@@ -45,6 +46,24 @@ export const Config = z.object({
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
 const VERSION = '0.6.1'
+
+/**
+ * Optional diary trace, enabled by `diaryDebug`. It sits next to the database
+ * so a user can find it, and it is best-effort: diagnostics never throw.
+ */
+function createDiaryLogger(dbPath: string): ((message: string) => void) | undefined {
+  const file = resolveDbPath(dbPath)
+  if (file === MEMORY_DB) return undefined
+  const target = join(dirname(file), 'diary.log')
+  return (message) => {
+    try {
+      mkdirSync(dirname(target), { recursive: true })
+      appendFileSync(target, `${new Date().toISOString()} ${message}\n`)
+    } catch {
+      // Diagnostics are best-effort.
+    }
+  }
+}
 
 /**
  * Record a failure where a human can find it. The loader reports plugin
@@ -88,6 +107,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
     maxPerSession: config.diaryMaxPerSession,
     personaHint: config.diaryPersonaHint,
     onError: recordError,
+    log: config.diaryDebug ? createDiaryLogger(config.dbPath) : undefined,
     generate: async (prompt) => {
       const stream = ctx.llm.stream({
         provider: config.diaryProvider,

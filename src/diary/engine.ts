@@ -35,6 +35,8 @@ export interface DiaryEngineOptions {
   readonly now?: () => Date
   /** Observes judgement failures; the engine never throws them upward. */
   readonly onError?: (error: unknown) => void
+  /** Optional diagnostic trace, e.g. a file logger enabled by config. */
+  readonly log?: (message: string) => void
 }
 
 interface MessageRow {
@@ -89,6 +91,7 @@ export class DiaryEngine {
    */
   async flush(sessionId: string): Promise<boolean> {
     const { db } = this.options
+    this.options.log?.(`flush session=${sessionId}`)
     try {
       const written = db
         .prepare('select count(*) as total from diaries where session_id = ?')
@@ -114,6 +117,7 @@ export class DiaryEngine {
         buildJudgePrompt({ transcript, personaHint: this.options.personaHint }),
       )
       const decision = parseDiaryResponse(answer)
+      this.options.log?.(`judged session=${sessionId} chars=${transcript.length} written=${decision !== null}`)
       if (decision === null) return false
 
       insertDiary(db, {
