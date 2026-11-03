@@ -2,8 +2,8 @@
  * The `mnemo_forget` tool: erase every memory that belongs to one subject.
  *
  * Deleting a person's or a group's memory removes L0 messages (and the
- * sessions that hold them), diaries, memory points, anchors, and the `persons`
- * row. It is the only supported way to "forget me".
+ * sessions that hold them), diaries, anchors, and the `persons` row. It is the
+ * only supported way to "forget me".
  *
  * @module dsn-mnemo/tools/forget
  */
@@ -14,7 +14,6 @@ interface ForgotCounts {
   messages: number
   sessions: number
   diaries: number
-  points: number
   anchors: number
   persons: number
 }
@@ -32,7 +31,6 @@ function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCou
       messages: 0,
       sessions: 0,
       diaries: 0,
-      points: 0,
       anchors: 0,
       persons: 0,
     }
@@ -42,9 +40,6 @@ function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCou
     }
     counts.diaries = Number(
       db.prepare('delete from diaries where subject_kind = ? and subject_id = ?').run(kind, id).changes,
-    )
-    counts.points = Number(
-      db.prepare('delete from memory_points where subject_kind = ? and subject_id = ?').run(kind, id).changes,
     )
     counts.anchors = Number(
       db.prepare('delete from anchors where subject_kind = ? and subject_id = ?').run(kind, id).changes,
@@ -68,7 +63,7 @@ export function createForgetTool(db: DatabaseSync) {
   return defineTool({
     name: 'mnemo_forget',
     description:
-      'Erase all memory of one person or one group (chat log, diaries, memory points, anchors, person profile). Use only when the user explicitly asks to be forgotten.',
+      'Erase all memory of one person or one group (chat log, diaries, anchors, person profile). Use only when the user explicitly asks to be forgotten.',
     parameters: {
       subject_kind: {
         type: 'string',
@@ -89,7 +84,6 @@ export function createForgetTool(db: DatabaseSync) {
           messages: { type: 'number' },
           sessions: { type: 'number' },
           diaries: { type: 'number' },
-          points: { type: 'number' },
           anchors: { type: 'number' },
           persons: { type: 'number' },
         },
@@ -98,7 +92,7 @@ export function createForgetTool(db: DatabaseSync) {
       render: (_args, value) => [
         {
           type: 'text',
-          text: `forgot: ${value.messages} messages, ${value.diaries} diaries, ${value.points} points, ${value.anchors} anchors`,
+          text: `forgot: ${value.messages} messages, ${value.diaries} diaries, ${value.anchors} anchors`,
         },
       ],
     },

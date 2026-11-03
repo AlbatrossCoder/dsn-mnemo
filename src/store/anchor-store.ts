@@ -1,5 +1,5 @@
 /**
- * L3 anchors: dates that should surface on their own.
+ * L2 anchors: dates that should surface on their own.
  *
  * Anchors belong to a subject (`user:<id>` or `group:<id>`). A single anchor
  * may repeat (daily / weekly / monthly / yearly); the memory system only does

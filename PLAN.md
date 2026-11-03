@@ -496,6 +496,16 @@ Copy-Item "$env:USERPROFILE\.dsh\profiles\desktop\cordis.patch.yml" `
 
 ---
 
+## 13. v0.7.x 架构收敛（2026-11-03）
+
+- 记忆系统不再调用模型：删除 `DiaryEngine` / `judge` / `diary_consolidate`，以及 `diaryProvider` / `diaryModel` / `diaryPersonaHint` / `diaryDebug` / `diaryImmediateOnImportant` / `diaryMaxPerSession` 配置。
+- 日记由主模型用 `diary_write` 书写（稳定前缀规则指导），无条数/长度上限，像人写日记一样。
+- 闲时/长度触发改为「待写日记」提示：下一消息注入，由主模型决定补写。
+- 记忆层收敛为三层：L0 原文 / L1 日记 / L2 锚点（删除 L2 记忆点；schema V4 drop `memory_points`）。
+- schema V3 增加 `last_turn_end_at` 用于闲时判定。
+
+---
+
 ## 附录 A · 从 asar 提取 DSH 文档
 
 ```python

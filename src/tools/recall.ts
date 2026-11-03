@@ -13,7 +13,7 @@ import { searchDiaries, type DiaryHit, type SubjectRef } from '../store/diary-st
 import { searchMessages, sessionSubject } from '../store/message-store.js'
 
 export type RecallScope = 'diary' | 'log'
-export type RecallSource = RecallScope | 'point'
+export type RecallSource = RecallScope
 
 export interface RecallHit {
   readonly source: RecallSource
@@ -196,7 +196,7 @@ export function createRecallTool(db: DatabaseSync, options: RecallOptions) {
               type: 'object',
               properties: {
                 id: { type: 'number' },
-                source: { type: 'string', enum: ['diary', 'log', 'point'] },
+                source: { type: 'string', enum: ['diary', 'log'] },
                 text: { type: 'string' },
                 score: { type: 'number' },
                 when: { type: 'string' },

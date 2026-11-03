@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { openDatabase } from '../db/database.js'
 import { insertDiary } from '../store/diary-store.js'
-import { insertPoint } from '../store/point-store.js'
 import { touchSession } from '../store/message-store.js'
 import { capHits, createProactiveText, renderProactive, type ProactiveSession } from './proactive.js'
 
@@ -66,23 +65,6 @@ test('the same memory is not injected again inside the cooldown', () => {
   }
 })
 
-test('memory points surface alongside diaries by association', () => {
-  const db = openDatabase(':memory:')
-  try {
-    insertPoint(db, {
-      subject: { kind: 'user', id: 'local' },
-      text: '主人下周要交房租，别忘了',
-      importance: 0.9,
-    })
-    const provider = createProactiveText(db, { limit: 20, now: () => NOW })
-    const text = provider(sessionOf('m1', [user('m1', '你还记得交房租的事吗')]))
-    assert.match(text, /房租/)
-    assert.match(text, /记忆点/)
-  } finally {
-    db.close()
-  }
-})
-
 test('group auto-injection is public-only', () => {
   const db = openDatabase(':memory:')
   try {
@@ -112,7 +94,7 @@ test('group auto-injection is public-only', () => {
 
 test('capHits enforces both the item cap and the token budget', () => {
   const hits = Array.from({ length: 30 }, (_, index) => ({
-    source: 'point' as const,
+    source: 'diary' as const,
     id: index,
     text: 'x'.repeat(100),
     score: 1,
@@ -120,7 +102,7 @@ test('capHits enforces both the item cap and the token budget', () => {
   }))
   assert.equal(capHits(hits, 20, 600).length, 20)
   const long = Array.from({ length: 3 }, (_, index) => ({
-    source: 'point' as const,
+    source: 'diary' as const,
     id: index,
     text: '记'.repeat(600),
     score: 1,

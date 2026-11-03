@@ -1,6 +1,8 @@
 # 多用户（QQ 群）适配分析
 
-> 结论：**QQ 侧可以稳定辨别用户**（每一条群消息都带 `user_id`/`group_id`），但**当前插件没有接收身份**，且数据模型假设「一个会话 = 一个人」。直接接群聊会串记忆、并且有隐私泄漏风险。要适配，需要桥提供身份 + 插件加「主体」维度。
+> 结论：**QQ 侧可以稳定辨别用户**（每一条群消息都带 `user_id`/`group_id`）。直接接群聊会串记忆、并且有隐私泄漏风险。要适配，需要桥提供身份 + 插件加「主体」维度。
+>
+> 注：本文是早期分析；「主体」维度（`sessions.kind/audience_id`、`messages.speaker_id/addressed`、`diaries.subject`、`anchors.subject`）已在 schema v2 落地，记忆模型已收敛为三层（见 [memory-model.md](memory-model.md)）。
 
 ## 1. 先对齐 L0 的定位
 
@@ -77,7 +79,7 @@ alter table sessions add column scope text;             -- 'dm' | 'group'
 | 合并去抖 | 多人同时说话时合并成一次模型轮次，避免每条消息触发一次请求 |
 | 隐私声明 | 群内聊天会本地明文落盘，接入前需在群公告说明 |
 | 按人清理 | 提供「清空某人的记忆」能力（`forget user <id>` 或管理脚本） |
-| 成本控制 | 日记判断按会话计费，群越活跃成本越高；`diaryIdleMinutes` 与 `diaryMaxPerSession` 要按群规模调 |
+| 成本控制 | 日记由主模型书写、无额外模型调用成本；`diaryIdleMinutes`（待写提示间隔）可按群规模调 |
 | 关系阶段 | 按人累计，不能再用「会话」代替「人」 |
 
 ## 5. 推荐路线
@@ -94,4 +96,4 @@ alter table sessions add column scope text;             -- 'dm' | 'group'
 3. 鲸鱼娘在群里是「被 @ 才说话」还是允许主动接话？
 4. 群共享记忆的边界：哪些内容允许所有群成员看到？（决定 visibility 默认值）
 
-确认后我出 v2 迁移与 `recall`/前置浮现的主体过滤实现；按新规矩，改完先测试、经你同意再发版。
+确认后我按 [memory-model.md](memory-model.md) 的三层模型实现 `recall`/前置浮现的主体过滤；按新规矩，改完先测试、经你同意再发版。

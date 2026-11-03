@@ -2,10 +2,9 @@
  * Proactive recall: surface relevant memory before the model answers.
  *
  * No keyword triggers: every turn builds a query from the **recent topic
- * segment** (see `window.ts`), retrieves memory points and diaries for the
- * current subject, and injects only hits above a relevance threshold. The
- * contribution is replaced every turn (never accumulated) and lives outside
- * the cached stable prefix.
+ * segment** (see `window.ts`), retrieves diaries for the current subject, and
+ * injects only hits above a relevance threshold. The contribution is replaced
+ * every turn (never accumulated) and lives outside the cached stable prefix.
  *
  * Rules:
  * 1. only a real human message ends the session's working context (local or QQ);
@@ -18,7 +17,6 @@
  */
 import type { DatabaseSync } from 'node:sqlite'
 import { searchDiaries } from '../store/diary-store.js'
-import { searchPoints, type PointHit } from '../store/point-store.js'
 import { sessionSubject } from '../store/message-store.js'
 import { estimateTokens, rankDiaryHits, type RecallHit } from '../tools/recall.js'
 import { buildProactiveQuery, type WindowMessage } from './window.js'
@@ -42,46 +40,16 @@ export interface ProactiveOptions {
 }
 
 const MAX_LINE = 140
-const DAY_MS = 86_400_000
 
 function clip(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim()
   return flat.length <= MAX_LINE ? flat : `${flat.slice(0, MAX_LINE)}…`
 }
 
-function recency(when: string, now: Date): number {
-  const parsed = Date.parse(`${when.replace(' ', 'T')}Z`)
-  if (Number.isNaN(parsed)) return 0
-  return 1 / (1 + Math.max(0, (now.getTime() - parsed) / DAY_MS))
-}
-
-/** Normalise BM25 ranks into 0..1 where 1 is the best hit of the batch. */
-function normalise(ranks: readonly number[]): (rank: number) => number {
-  if (ranks.length === 0) return () => 0
-  const best = Math.min(...ranks)
-  const worst = Math.max(...ranks)
-  if (best === worst) return () => 1
-  return (rank) => (worst - rank) / (worst - best)
-}
-
-function rankPointHits(hits: readonly PointHit[], now: Date): RecallHit[] {
-  if (hits.length === 0) return []
-  const bm = normalise(hits.map((hit) => hit.rank))
-  return hits.map((hit) => ({
-    source: 'point' as const,
-    id: hit.id,
-    text: hit.text,
-    score: 0.6 * bm(hit.rank) + 0.25 * hit.importance + 0.15 * recency(hit.createdAt, now),
-    when: hit.createdAt,
-  }))
-}
-
 /** Render hits as a clearly delimited, non-authoritative memory note. */
 export function renderProactive(hits: readonly RecallHit[]): string {
   if (hits.length === 0) return ''
-  const lines = hits.map(
-    (hit) => `- ${hit.source === 'point' ? '[记忆点] ' : ''}${hit.when.slice(0, 10)} ${clip(hit.text)}`,
-  )
+  const lines = hits.map((hit) => `- ${hit.when.slice(0, 10)} ${clip(hit.text)}`)
   return [
     '以下是从长期记忆里浮现的内容，可能与当前对话有关（自然地使用，不要逐字复述，也不要声称这是用户刚说的）：',
     ...lines,
@@ -149,7 +117,6 @@ export function createProactiveText(
     let text = ''
     if (query.tokens.length >= 2) {
       const at = now()
-      const pointHits = searchPoints(db, query.text, subject, options.limit * 2, 'or')
       const diaryHits = searchDiaries(db, query.text, options.limit * 2, 'or', subject).filter(
         // Auto-injection in a group is public-only.
         (hit) => subject.kind !== 'group' || hit.visibility === 'public',
@@ -158,7 +125,7 @@ export function createProactiveText(
       const cooldown = cooldowns.get(session.id) ?? new Map<string, number>()
       cooldowns.set(session.id, cooldown)
 
-      const merged = [...rankPointHits(pointHits, at), ...rankDiaryHits(diaryHits, options.limit * 2, at)]
+      const merged = rankDiaryHits(diaryHits, options.limit * 2, at)
         .filter((hit) => hit.score >= threshold)
         .filter((hit) => {
           const key = `${hit.source}:${hit.id}`

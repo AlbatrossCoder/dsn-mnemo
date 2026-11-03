@@ -23,11 +23,11 @@ export function createDiaryWriteTool(db: DatabaseSync) {
   return defineTool({
     name: 'diary_write',
     description:
-      '像写日记一样，把这一轮里值得记住的内容记下来——做了什么、吃了什么、去了哪里、聊了什么、做了什么决定，日常流水账也算；记什么由你判断，没有条数限制。用第一人称写 2-3 句。',
+      '像写日记一样，把这一轮里值得记住的内容记下来——做了什么、吃了什么、去了哪里、聊了什么、做了什么决定，日常流水账也算；记什么、写多长由你判断，没有条数限制。',
     parameters: {
       content: {
         type: 'string',
-        description: 'The diary body, first person, 2-3 sentences.',
+        description: 'The diary body, first person.',
         required: true,
       },
       importance: {

@@ -13,7 +13,6 @@ import { formatDate, renderAnchorLines, renderStablePrefix } from './inject/stab
 import { SessionRecorder } from './session/recorder.js'
 import { anchorsInWindow, markAnchorFired } from './store/anchor-store.js'
 import { sessionSubject } from './store/message-store.js'
-import { purgeExpiredPoints } from './store/point-store.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
 import { createForgetTool } from './tools/forget.js'
@@ -84,7 +83,6 @@ export function apply(ctx: Context, config: MnemoConfig): void {
 
 function setup(ctx: Context, config: MnemoConfig): void {
   const db = openDatabase(config.dbPath)
-  purgeExpiredPoints(db)
   const recorder = new SessionRecorder(db, { storeReasoning: config.storeReasoning })
 
   ctx.effect(() => () => db.close())

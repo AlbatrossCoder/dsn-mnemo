@@ -11,7 +11,7 @@
  * @module dsn-mnemo/db/schema
  */
 
-/** L0 exact log plus L1 diaries, L3 anchors, L2 working state. */
+/** L0 chat log, L1 diaries, L2 anchors. */
 const V1 = `
 create table sessions (
   id text primary key,
@@ -220,8 +220,18 @@ const V3 = `
 alter table sessions add column last_turn_end_at text;
 `
 
+/**
+ * V4: drop the short-term "memory points" layer. After the diary became the
+ * main model's job (v0.7.x), a separate short-term layer had no writer left;
+ * the three remaining layers are L0 transcript, L1 diary, L2 anchors.
+ */
+const V4 = `
+drop table if exists memory_points_fts;
+drop table if exists memory_points;
+`
+
 /** Every migration in application order. Append only; never edit a released entry. */
-export const MIGRATIONS: readonly string[] = [V1, V2, V3]
+export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4]
 
 /** Highest schema version this build understands. */
 export const SCHEMA_VERSION = MIGRATIONS.length
