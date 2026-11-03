@@ -1,4 +1,4 @@
-import type { Context } from '@deepseek-ai/cordis'
+﻿import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -9,6 +9,7 @@ import { createProactiveText } from './inject/proactive.js'
 import { formatDate, renderStablePrefix } from './inject/stable-prefix.js'
 import { SessionRecorder } from './session/recorder.js'
 import { anchorsInWindow } from './store/anchor-store.js'
+import { refreshRelationStage } from './store/relation.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
 import { createRecallTool } from './tools/recall.js'
@@ -23,7 +24,7 @@ export const name = 'mnemo'
  */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'llm']
 
-/** User-facing configuration (mirrors DESIGN.md §8). */
+/** User-facing configuration (mirrors DESIGN.md 搂8). */
 export const Config = z.object({
   dbPath: z.string().default('~/.dsh/mnemo/mnemo.db'),
   diaryIdleMinutes: z.natural().default(30),
@@ -39,7 +40,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.5.0'
+const VERSION = '0.6.0'
 
 /**
  * Mount the memory runtime.
@@ -86,8 +87,9 @@ export function apply(ctx: Context, config: MnemoConfig) {
     recorder.handle(session, event)
     if (event.type === 'turn/start') {
       engine.noteActivity(session.id)
-    } else if (event.type === 'turn/end' && event.data.reason.kind === 'completed') {
-      engine.noteTurnEnd(session.id)
+    } else if (event.type === 'turn/end') {
+      if (event.data.reason.kind === 'completed') engine.noteTurnEnd(session.id)
+      refreshRelationStage(db, session.id)
     }
   })
 

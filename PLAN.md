@@ -262,7 +262,7 @@ for await (const chunk of ctx.llm.stream({
 | P3 | ✅ | `systemPrompt.section('mnemo:rules', order 30)` 稳定前缀 + `anchors` 日期窗口 + `anchor_upsert` 工具；harness 用真实 `systemPrompt.assemble()` 验证「同日两次结果字节一致」「锚点写入后出现」；单测 42/42。桌面端需重启后才加载 0.3.0 |
 | P4 | ✅ | 触发规则（时间指代/情绪词）→ 日记检索 → 每 agent 的 `systemPrompt.context('mnemo:recall')`；harness 通过 `agent/created` 驱动，组装结果里出现浮现内容且同一轮内字节稳定；单测 51/51 |
 | P5 | ✅ | 日记引擎：`turn/end(completed)` → 空闲计时 → 单次轻量判断 → 写入；`diary_write` / `diary_update`（严格理由 + `diary_revisions` 备份）；启动 `catchUp()` 补判。单测 70/70。真机 30 分钟静置与真实模型调用待重启后验收 |
-| P6 | ⬜ | — |
+| P6 | ✅ | 关系阶段公式落地（`turn/end` 更新）；README 重写为可安装版本；DESIGN 补「实现修正」；边界测试（超长对话 prompt 有界、空库、模型失败、无锚点）加入；单测 74/74。真机冒烟仍待重启 |
 
 实现备注（P5 期间确认）：
 

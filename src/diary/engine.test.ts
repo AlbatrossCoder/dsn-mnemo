@@ -177,6 +177,29 @@ test('too little conversation is skipped', async () => {
   }
 })
 
+test('a very long conversation produces a bounded prompt', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    const long = '很长的对话内容。'.repeat(400)
+    seedSession(db, 's1', [long, long, long])
+    let captured = ''
+    const engine = new DiaryEngine({
+      db,
+      generate: async (prompt) => {
+        captured = prompt
+        return DIARY_REPLY
+      },
+      idleMs: 1000,
+      maxPerSession: 3,
+    })
+    assert.equal(await engine.flush('s1'), true)
+    assert.ok(captured.length < 4000, `prompt was ${captured.length} chars`)
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
 test('catchUp only judges sessions that went quiet', async () => {
   const db = openDatabase(':memory:')
   try {

@@ -395,3 +395,26 @@ src/
 
 人设 prompt **不放在这个包里**——它属于 persona 层，`dsn-mnemo` 只接收一个可选的 `diaryPersonaHint` 字符串用于日记生成，保持记忆系统与人设的解耦。
 
+
+## 12. 实现修正（Windows 落地后回填）
+
+本文档写于调研之前。以下为实现定稿与原文不一致的地方，开发以本节为准。
+
+| # | 原文假设 | 实现定稿 | 原因 |
+|---|---|---|---|
+| 1 | `sqlite3_simple` 扩展 | `node:sqlite` 的 `DatabaseSync` | 运行时没有 `sqlite3_simple`，DSH 自身也用 `node:sqlite`；零原生依赖 |
+| 2 | `sqlite-vec` 提供 `vec0` 向量检索 | **不做向量**，纯 FTS5；`EmbeddingProvider` 留接口 | 目标环境 `no such module: vec0`，且账号侧没有 embedding 端点 |
+| 3 | Jieba 分词 + RRF 融合 | `Intl.Segmenter('zh')` 预分词 + FTS5 BM25；日记排序用 BM25 + 重要度 + 近因 | 运行时没有 Jieba；`unicode61` 对整句中文 0 命中 |
+| 4 | 日记检索「语义快、日志慢」 | 日记与日志都走 FTS5，区别在排序信号与检索召回宽度 | 无向量检索，`recall` 的 scope 差异改为「日记：重要度+近因」与「日志：精确词面」 |
+| 5 | `systemPrompt.context()` 全局注入浮现结果 | 在 `agent/created` 时于 `agent.ctx` 上注册 `mnemo:recall`，provider 读该 agent 的最新人类消息 | `context()` 的 provider 只能拿到 `AssembleContext.scope`，拿不到会话对象；按 agent 注册才能做到「每轮替换、不串会话」 |
+| 6 | 日记判断输出 JSON | 输出文本头（`IMPORTANCE` / `EMOTION` / `TAGS` + 正文）或 `NO_DIARY` | 文本头解析容错更好，解析失败一律不写，避免坏数据 |
+| 7 | 30 分钟计时器随 fiber 自动清理（`ctx.timeout`） | 进程内 `setTimeout` + `dispose()` 统一清理；`last_active_at` 持久化 + 启动 `catchUp()` 补判 | 计时器服务不是硬依赖，少一个 inject；进程被杀后的补判仍是必须的 |
+| 8 | 关系阶段由「沉淀量驱动」 | `score = sessions + diaries × 0.5`，`turn/end` 后更新 `sessions.relation_stage` | 落地为可测的纯函数 |
+
+新增的、原文没有的实现细节：
+
+- **字符级兜底检索**：中文分词是精确词匹配，「看了海」索引成 `看了` + `海`，查询「看海」会 0 命中；FTS 无结果时改用实义汉字匹配（≥2 个命中），按命中数与时间排序。
+- **L0 去重**：`messages` 用 `(session_id, seq)` 唯一约束，事件重放（HMR、恢复）不会重复入库。
+- **FTS 重建**：外部内容表不能用自带的 `rebuild`（会读未分词的 `content`），改为 `delete-all` + 从 `*_seg` 列重灌。
+- **`diary_update` 备份**：改写前把旧正文与理由写进 `diary_revisions`，FTS 由 `content_seg` 触发器跟随。
+
