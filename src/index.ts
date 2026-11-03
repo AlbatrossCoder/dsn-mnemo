@@ -157,7 +157,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
     name: 'mnemo:rules',
     order: 30,
     interpolate: false,
-    text: () => renderStablePrefix(anchorsInWindow(db, { kind: 'user', id: 'local' }, formatDate(new Date()), config.anchorWindowDays), formatDate(new Date())),
+    text: () => renderStablePrefix([], formatDate(new Date())),
   })
 
   const ping = defineTool({
@@ -209,15 +209,13 @@ function setup(ctx: Context, config: MnemoConfig): void {
       interpolate: false,
       text: () => proactive(agent.session),
     })
-    // Group chats get their own anchors here; the global stable section only
-    // knows the local person's dates.
+    // Per-agent anchors: each subject (person or group) sees only its own.
     agent.ctx.systemPrompt.context({
       name: 'mnemo:anchors',
       order: 35,
       interpolate: false,
       text: () => {
         const subject = sessionSubject(db, agent.session.id)
-        if (subject.kind !== 'group') return ''
         const today = formatDate(new Date())
         const due = anchorsInWindow(db, subject, today, config.anchorWindowDays).filter(
           (anchor) => anchor.lastFiredOn !== today && anchor.handledAt === null,

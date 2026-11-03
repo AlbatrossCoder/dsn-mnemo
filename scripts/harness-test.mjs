@@ -90,7 +90,8 @@ try {
   assert.ok(found.results.length >= 1, JSON.stringify(found))
   assert.match(found.results[0].text, /^\[user\] 我们上次聊了记忆系统的设计$/)
 
-  // Stable prefix: rules are present, and an anchor inside the window shows up.
+  // Stable prefix: rules are present and never carry dates or anchors. Anchors
+  // are injected per agent (per subject), so the same bytes stay cacheable.
   const before = await ctx.systemPrompt.assemble()
   const rulesBefore = before.sections.find((section) => section.name === 'mnemo:rules')
   assert.ok(rulesBefore, 'mnemo:rules section missing')
@@ -102,7 +103,7 @@ try {
 
   const after = await ctx.systemPrompt.assemble()
   const rulesAfter = after.sections.find((section) => section.name === 'mnemo:rules')
-  assert.match(rulesAfter.text, /测试纪念日/)
+  assert.doesNotMatch(rulesAfter.text, /测试纪念日/, 'anchors must not enter the global stable prefix')
 
   const again = await ctx.systemPrompt.assemble()
   const rulesAgain = again.sections.find((section) => section.name === 'mnemo:rules')
@@ -127,6 +128,9 @@ try {
   const memoryContext = withRecall.contexts.find((entry) => entry.name === 'mnemo:recall')
   assert.ok(memoryContext, 'mnemo:recall context missing')
   assert.match(memoryContext.text, /看了海/)
+  const anchorContext = withRecall.contexts.find((entry) => entry.name === 'mnemo:anchors')
+  assert.ok(anchorContext, 'mnemo:anchors context missing')
+  assert.match(anchorContext.text, /测试纪念日/)
 
   const stableAgain = await ctx.systemPrompt.assemble()
   const stableContext = stableAgain.contexts.find((entry) => entry.name === 'mnemo:recall')
