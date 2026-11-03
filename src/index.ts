@@ -37,6 +37,7 @@ export const Config = z.object({
   diaryModel: z.string().default('deepseek-flash'),
   diaryPersonaHint: z.string().default(''),
   diaryDebug: z.boolean().default(false),
+  storeReasoning: z.boolean().default(false),
   anchorWindowDays: z.natural().default(2),
   contextRecallLimit: z.natural().default(3),
   recallDiaryLimit: z.natural().default(5),
@@ -45,7 +46,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.6.4'
+const VERSION = '0.6.5'
 
 /**
  * Optional diary trace, enabled by `diaryDebug`. It sits next to the database
@@ -99,7 +100,7 @@ export function apply(ctx: Context, config: MnemoConfig): void {
 
 function setup(ctx: Context, config: MnemoConfig): void {
   const db = openDatabase(config.dbPath)
-  const recorder = new SessionRecorder(db)
+  const recorder = new SessionRecorder(db, { storeReasoning: config.storeReasoning })
 
   const engine = new DiaryEngine({
     db,

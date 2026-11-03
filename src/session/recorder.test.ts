@@ -52,6 +52,33 @@ function toolResult(text: string): unknown {
   }
 }
 
+test('reasoning is stripped from the stored raw JSON by default', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(session, makeEvent('assistant/message', 1, assistantMessage('可见回答')))
+    const row = db.prepare("select raw from messages where role = 'assistant'").get() as { raw: string }
+    assert.doesNotMatch(row.raw, /内部推理/)
+    assert.match(row.raw, /可见回答/)
+  } finally {
+    db.close()
+  }
+})
+
+test('storeReasoning keeps reasoning blocks in raw JSON', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db, { storeReasoning: true })
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(session, makeEvent('assistant/message', 1, assistantMessage('可见回答')))
+    const row = db.prepare("select raw from messages where role = 'assistant'").get() as { raw: string }
+    assert.match(row.raw, /内部推理/)
+  } finally {
+    db.close()
+  }
+})
+
 test('recorder stores user, assistant, and tool messages in L0', () => {
   const db = openDatabase(':memory:')
   try {

@@ -42,11 +42,35 @@ function roleOf(message: MessageShape): MessageRole | undefined {
   }
 }
 
+/** Options for what L0 keeps beyond the searchable text. */
+export interface RecorderOptions {
+  /**
+   * Keep the model's reasoning blocks in the stored raw JSON. Off by default:
+   * thinking is not memory, and keeping it costs space and privacy.
+   */
+  readonly storeReasoning?: boolean
+}
+
+/** Drop reasoning blocks from a message's content before persisting raw JSON. */
+function withoutReasoning(message: MessageShape): MessageShape {
+  if (!Array.isArray(message.content)) return message
+  const content = message.content.filter(
+    (block) => !(typeof block === 'object' && block !== null && (block as { type?: unknown }).type === 'reasoning'),
+  )
+  return { ...message, content }
+}
+
 export class SessionRecorder {
   /** Last opened turn per session; `user/message` payloads carry no turn field. */
   private readonly turns = new Map<string, number>()
+  private readonly storeReasoning: boolean
 
-  constructor(private readonly db: DatabaseSync) {}
+  constructor(
+    private readonly db: DatabaseSync,
+    options: RecorderOptions = {},
+  ) {
+    this.storeReasoning = options.storeReasoning ?? false
+  }
 
   /** Fold one session event into L0. Errors are swallowed by design. */
   handle(session: RecorderSession, event: SessionEvent): void {
@@ -72,6 +96,7 @@ export class SessionRecorder {
           touchSession(this.db, session.id, turn)
           const content = flattenContent(Array.isArray(message.content) ? message.content : [])
           if (content.length === 0) return
+          const stored = this.storeReasoning ? message : withoutReasoning(message)
           insertMessage(this.db, {
             sessionId: session.id,
             seq: event.seq,
@@ -79,7 +104,7 @@ export class SessionRecorder {
             role,
             messageId: typeof message.id === 'string' ? message.id : null,
             content,
-            raw: JSON.stringify(message),
+            raw: JSON.stringify(stored),
           })
           return
         }

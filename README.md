@@ -4,7 +4,7 @@
 
 `dsn-mnemo` 是一个 DeepSeek Harness（DSH）插件。它**不负责人设**——人设由独立的 persona 插件或 preset 提供；它只做一件事：记录发生过什么、把值得留下的沉淀成日记、在合适的时候把对的事浮现进当前对话。
 
-**当前状态**：`0.6.4` 已发布到 npm（`npm i dsn-mnemo`），P0–P6 已实现，单测 86/86、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
+**当前状态**：`0.6.5` 已发布到 npm（`npm i dsn-mnemo`），P0–P6 已实现，单测 90/90、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
 
 ---
 
@@ -106,6 +106,7 @@ $pnpm = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnp
 | `diaryProvider` | `deepseek-account` | 判断调用使用的 provider route |
 | `diaryModel` | `deepseek-flash` | 判断调用使用的模型 |
 | `diaryPersonaHint` | `""` | 可选的日记口吻提示 |
+| `storeReasoning` | `false` | 是否把模型的思考过程写进 `raw` JSON；默认丢弃，且从不参与检索 |
 | `anchorWindowDays` | `2` | 锚点前后各几天可触发（单条锚点可覆盖） |
 | `contextRecallLimit` | `3` | 前置浮现最多条数 |
 | `recallDiaryLimit` | `5` | `recall` 日记召回条数 |

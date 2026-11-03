@@ -1,6 +1,6 @@
 {
   "name": "dsn-mnemo",
-  "version": "0.6.4",
+  "version": "0.6.5",
   "description": "Persistent memory runtime for DeepSeek Harness: L0 logs, L1 diaries, L2 working state, L3 anchors.",
   "license": "Apache-2.0",
   "type": "module",
