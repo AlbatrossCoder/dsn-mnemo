@@ -31,6 +31,7 @@ export interface PendingOptions {
 const MIN_PROMPT_CHARS = 30
 
 interface SessionRow {
+  kind: string
   last_turn_end_at: string | null
   diary_judged_at: string | null
 }
@@ -38,6 +39,7 @@ interface SessionRow {
 interface MessageRow {
   role: string
   content: string
+  addressed: number
 }
 
 /** The last real human message id, used to memoise the hint within one turn. */
@@ -90,9 +92,10 @@ export function createPendingDiaryText(
 
 function compute(db: DatabaseSync, sessionId: string, options: PendingOptions, now: Date): string {
   const session = db
-    .prepare('select last_turn_end_at, diary_judged_at from sessions where id = ?')
+    .prepare('select kind, last_turn_end_at, diary_judged_at from sessions where id = ?')
     .get(sessionId) as SessionRow | undefined
   if (session === undefined) return ''
+  const isGroup = session.kind === 'group'
 
   // Was there a quiet gap after the last completed turn? Without this the hint
   // would fire on every fresh message.
@@ -102,12 +105,17 @@ function compute(db: DatabaseSync, sessionId: string, options: PendingOptions, n
   const since = session.diary_judged_at ?? '1970-01-01 00:00:00'
   const messages = db
     .prepare(
-      "select role, content from messages where session_id = ? and created_at > ? and role in ('user','assistant') order by id",
+      "select role, content, addressed from messages where session_id = ? and created_at > ? and role in ('user','assistant') order by id",
     )
     .all(sessionId, since) as unknown as MessageRow[]
 
-  const turns = messages.filter((message) => message.role === 'user').length
-  const chars = messages.reduce((sum, message) => sum + message.content.length, 0)
+  // Group chatter that never addressed the assistant is just L0 — no diary hint.
+  const relevant = isGroup
+    ? messages.filter((message) => message.role !== 'user' || message.addressed === 1)
+    : messages
+
+  const turns = relevant.filter((message) => message.role === 'user').length
+  const chars = relevant.reduce((sum, message) => sum + message.content.length, 0)
   if (turns === 0 || chars < MIN_PROMPT_CHARS) return ''
 
   const idleMet = idleElapsed >= options.idleMs

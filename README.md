@@ -73,7 +73,7 @@
 | 工具 | 参数 | 作用 |
 |---|---|---|
 | `recall` | `query`、`scope: diary \| log`、`limit?` | 深掘记忆：日记走 BM25+重要度+近因，日志走词面检索 |
-| `diary_write` | `content`、`importance?`、`emotion?`、`tags?` | 把值得记住的内容写进日记（主模型自行调用，无条数上限） |
+| `diary_write` | `content`、`importance?`、`emotion?`、`tags?`、`visibility?` | 把值得记住的内容写进日记（主模型自行调用，无条数上限；群聊默认 `public`，可标 `secret`） |
 | `diary_update` | `id`、`content`、`reason` | 纠正日记；必须给理由，旧正文进 `diary_revisions` |
 | `anchor_upsert` | `event_name`、`target_date`、`window_days?`、`tone_hint?`、`repeat?` | 录入锚点（`YYYY-MM-DD`，可声明 daily/weekly/monthly/yearly） |
 | `mnemo_forget` | `subject_kind: user \| group`、`subject_id` | 清空某个人/某个群的全部记忆 |

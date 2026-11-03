@@ -86,3 +86,58 @@ test('length threshold alone prompts without a quiet gap', () => {
     db.close()
   }
 })
+
+test('pure group chatter never prompts a diary hint', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 'g1', 1, { kind: 'group', audienceId: 'grp-1' })
+    insertMessage(db, {
+      sessionId: 'g1',
+      seq: 1,
+      turn: 1,
+      role: 'user',
+      content: '大家今天聊了天气，内容还挺多的',
+      addressed: false,
+      raw: '{}',
+    })
+    db.prepare("update sessions set last_turn_end_at = '2026-11-03 11:00:00' where id = 'g1'").run()
+    const pending = createPendingDiaryText(db, {
+      idleMs: 20 * 60_000,
+      maxTurns: 30,
+      maxChars: 12_000,
+      now: () => NOW,
+    })
+    const g = { id: 'g1', deriveMessages: () => [{ id: 'm1', role: 'user', source: { kind: 'qq' } }] }
+    assert.equal(pending(g), '')
+  } finally {
+    db.close()
+  }
+})
+
+test('an addressed group turn prompts a diary hint after a gap', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 'g1', 1, { kind: 'group', audienceId: 'grp-1' })
+    insertMessage(db, {
+      sessionId: 'g1',
+      seq: 1,
+      turn: 1,
+      role: 'user',
+      content: '今天群活动，我 @ 了鲸鱼娘让她把今天的聚会记下来',
+      addressed: true,
+      raw: '{}',
+    })
+    insertMessage(db, { sessionId: 'g1', seq: 2, turn: 1, role: 'assistant', content: '好的，我记下了今天的聚会', raw: '{}' })
+    db.prepare("update sessions set last_turn_end_at = '2026-11-03 11:00:00' where id = 'g1'").run()
+    const pending = createPendingDiaryText(db, {
+      idleMs: 20 * 60_000,
+      maxTurns: 30,
+      maxChars: 12_000,
+      now: () => NOW,
+    })
+    const g = { id: 'g1', deriveMessages: () => [{ id: 'm1', role: 'user', source: { kind: 'qq' } }] }
+    assert.match(pending(g), /diary_write/)
+  } finally {
+    db.close()
+  }
+})

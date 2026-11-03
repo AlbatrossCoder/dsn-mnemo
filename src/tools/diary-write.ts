@@ -42,6 +42,12 @@ export function createDiaryWriteTool(db: DatabaseSync) {
         type: 'string',
         description: 'Comma-separated tags, e.g. 日常,约定.',
       },
+      visibility: {
+        type: 'string',
+        enum: ['public', 'private', 'secret'],
+        description:
+          'Visibility. Defaults to public in a group, private in a 1:1 chat. Mark secret for something that must never appear in a group.',
+      },
     },
     output: {
       schema: {
@@ -59,10 +65,17 @@ export function createDiaryWriteTool(db: DatabaseSync) {
         .slice(0, 3)
       const sessionId = exec.agent?.session.id
       const subject = sessionId === undefined ? undefined : sessionSubject(db, sessionId)
+      const visibility =
+        args.visibility === 'public' || args.visibility === 'private' || args.visibility === 'secret'
+          ? args.visibility
+          : subject?.kind === 'group'
+            ? 'public'
+            : 'private'
       const id = insertDiary(db, {
         sessionId: sessionId ?? null,
         subjectKind: subject?.kind ?? null,
         subjectId: subject?.id ?? null,
+        visibility,
         content: args.content,
         importance: clamp(args.importance),
         emotion: clamp(args.emotion),

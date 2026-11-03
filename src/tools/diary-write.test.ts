@@ -49,6 +49,27 @@ test('diary_write attaches the current session subject', async () => {
   }
 })
 
+test('diary_write defaults to public in a group and honours an explicit visibility', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 's-g', 1, { kind: 'group', audienceId: 'grp-9' })
+    const tool = createDiaryWriteTool(db)
+    const exec = { agent: { session: { id: 's-g' } } } as never
+    const pub = (await tool.execute({ content: '群里约了周末吃饭' }, exec)) as { id: number }
+    const secret = (await tool.execute({ content: '某人私下说了一件不能公开的事', visibility: 'secret' }, exec)) as {
+      id: number
+    }
+    const rows = db.prepare('select id, visibility from diaries order by id').all() as Array<{
+      id: number
+      visibility: string
+    }>
+    assert.equal(rows.find((row) => row.id === pub.id)?.visibility, 'public')
+    assert.equal(rows.find((row) => row.id === secret.id)?.visibility, 'secret')
+  } finally {
+    db.close()
+  }
+})
+
 test('diary_update backs up the old text before rewriting', async () => {
   const db = openDatabase(':memory:')
   try {
