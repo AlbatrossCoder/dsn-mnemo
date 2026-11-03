@@ -43,6 +43,7 @@ interface MessageRow {
 interface SessionRow {
   id: string
   last_active_at: string
+  diary_judged_at: string | null
 }
 
 const RECENT_MESSAGE_LIMIT = 12
@@ -103,6 +104,10 @@ export class DiaryEngine {
         .join('\n')
       if (transcript.length < MIN_TRANSCRIPT_CHARS) return false
 
+      // Mark before calling: a provider outage must not make every later
+      // reload judge the same quiet session again.
+      db.prepare("update sessions set diary_judged_at = datetime('now') where id = ?").run(sessionId)
+
       const answer = await this.options.generate(
         buildJudgePrompt({ transcript, personaHint: this.options.personaHint }),
       )
@@ -134,13 +139,18 @@ export class DiaryEngine {
     let written = 0
     try {
       const rows = db
-        .prepare('select id, last_active_at from sessions where turn_count > 0')
+        .prepare('select id, last_active_at, diary_judged_at from sessions where turn_count > 0')
         .all() as unknown as SessionRow[]
       for (const row of rows) {
         const lastActive = Date.parse(`${row.last_active_at.replace(' ', 'T')}Z`)
         if (Number.isNaN(lastActive)) continue
         const age = now.getTime() - lastActive
         if (age < this.options.idleMs || age > MAX_CATCH_UP_AGE_MS) continue
+        // Already judged this quiet stretch (possibly before a restart).
+        if (row.diary_judged_at !== null) {
+          const judged = Date.parse(`${row.diary_judged_at.replace(' ', 'T')}Z`)
+          if (!Number.isNaN(judged) && lastActive <= judged) continue
+        }
         if (await this.flush(row.id)) written += 1
       }
     } catch {

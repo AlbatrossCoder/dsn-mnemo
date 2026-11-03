@@ -18,7 +18,8 @@ create table sessions (
   started_at text not null default (datetime('now')),
   last_active_at text not null default (datetime('now')),
   turn_count integer not null default 0,
-  relation_stage text not null default 'initial'
+  relation_stage text not null default 'initial',
+  diary_judged_at text
 );
 
 create table messages (

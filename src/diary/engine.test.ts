@@ -200,6 +200,52 @@ test('a very long conversation produces a bounded prompt', async () => {
   }
 })
 
+test('catchUp does not judge the same quiet stretch twice', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    seedSession(db, 'old', ['今天聊了记忆系统的设计', '聊到很晚，我有点困了'])
+    db.prepare("update sessions set last_active_at = datetime('now', '-2 hours') where id = 'old'").run()
+    const engine = new DiaryEngine({
+      db,
+      generate: async () => DIARY_REPLY,
+      idleMs: 30 * 60_000,
+      maxPerSession: 3,
+      now: () => new Date(),
+    })
+    assert.equal(await engine.catchUp(), 1)
+    assert.equal(await engine.catchUp(), 0)
+    assert.equal(countDiaries(db), 1)
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
+test('new activity after a judgement re-arms it', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    seedSession(db, 'old', ['今天聊了记忆系统的设计', '聊到很晚，我有点困了'])
+    db.prepare("update sessions set last_active_at = datetime('now', '-2 hours') where id = 'old'").run()
+    const engine = new DiaryEngine({
+      db,
+      generate: async () => DIARY_REPLY,
+      idleMs: 30 * 60_000,
+      maxPerSession: 3,
+      now: () => new Date(),
+    })
+    assert.equal(await engine.catchUp(), 1)
+    // A later turn moved activity past the previous judgement mark, then went quiet.
+    db.prepare(
+      "update sessions set last_active_at = datetime('now', '-2 hours'), diary_judged_at = datetime('now', '-3 hours') where id = 'old'",
+    ).run()
+    assert.equal(await engine.catchUp(), 1)
+    assert.equal(countDiaries(db), 2)
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
 test('catchUp only judges sessions that went quiet', async () => {
   const db = openDatabase(':memory:')
   try {

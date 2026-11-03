@@ -1,4 +1,4 @@
-import type { Context } from '@deepseek-ai/cordis'
+﻿import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -27,7 +27,7 @@ export const name = 'mnemo'
  */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'llm']
 
-/** User-facing configuration (mirrors DESIGN.md 搂8). */
+/** User-facing configuration (mirrors DESIGN.md 鎼?). */
 export const Config = z.object({
   dbPath: z.string().default('~/.dsh/mnemo/mnemo.db'),
   diaryIdleMinutes: z.natural().default(30),
@@ -43,7 +43,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.6.0'
+const VERSION = '0.6.1'
 
 /**
  * Record a load-time failure where a human can find it. The loader reports

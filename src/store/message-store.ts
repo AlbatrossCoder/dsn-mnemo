@@ -8,6 +8,7 @@
  * @module dsn-mnemo/store/message-store
  */
 import type { DatabaseSync } from 'node:sqlite'
+import { cjkChars } from '../db/char-search.js'
 import { buildMatchQuery, segment } from '../db/segment.js'
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
@@ -76,12 +77,22 @@ export function countMessages(db: DatabaseSync): number {
 /**
  * Keyword search over logged messages.
  *
+ * Falls back to character matching when the segmented query finds nothing, so
+ * a rephrased recall still reaches the original words.
+ *
  * @param query - raw query text, segmented with the index tokenizer.
  * @param limit - maximum hits after BM25 ordering.
  */
 export function searchMessages(db: DatabaseSync, query: string, limit = 5): MessageHit[] {
   const match = buildMatchQuery(query)
-  if (match === null) return []
+  if (match !== null) {
+    const hits = searchMessagesByMatch(db, match, limit)
+    if (hits.length > 0) return hits
+  }
+  return searchMessagesByCharacters(db, query, limit)
+}
+
+function searchMessagesByMatch(db: DatabaseSync, match: string, limit: number): MessageHit[] {
   const rows = db
     .prepare(
       `select m.id, m.session_id, m.seq, m.turn, m.role, m.content, m.created_at,
@@ -92,18 +103,46 @@ export function searchMessages(db: DatabaseSync, query: string, limit = 5): Mess
         order by rank
         limit ?`,
     )
-    .all(match, limit) as Array<{
-    id: number
-    session_id: string
-    seq: number
-    turn: number
-    role: MessageRole
-    content: string
-    created_at: string
-    rank: number
-  }>
+    .all(match, limit) as unknown as MessageRow[]
 
-  return rows.map((row) => ({
+  return rows.map(toHit)
+}
+
+function searchMessagesByCharacters(db: DatabaseSync, query: string, limit: number): MessageHit[] {
+  const chars = cjkChars(query)
+  if (chars.length < 2) return []
+  const where = chars.map(() => 'content like ?').join(' or ')
+  const rows = db
+    .prepare(
+      `select id, session_id, seq, turn, role, content, created_at, 0 as rank
+         from messages
+        where ${where}
+        order by created_at desc
+        limit 50`,
+    )
+    .all(...chars.map((char) => `%${char}%`)) as unknown as MessageRow[]
+
+  return rows
+    .map((row) => ({ row, matched: chars.filter((char) => row.content.includes(char)).length }))
+    .filter((candidate) => candidate.matched >= 2)
+    .sort((a, b) => b.matched - a.matched || b.row.created_at.localeCompare(a.row.created_at))
+    .slice(0, limit)
+    .map(({ row }) => toHit(row))
+}
+
+interface MessageRow {
+  id: number
+  session_id: string
+  seq: number
+  turn: number
+  role: MessageRole
+  content: string
+  created_at: string
+  rank: number
+}
+
+function toHit(row: MessageRow): MessageHit {
+  return {
     id: row.id,
     sessionId: row.session_id,
     seq: row.seq,
@@ -112,7 +151,7 @@ export function searchMessages(db: DatabaseSync, query: string, limit = 5): Mess
     content: row.content,
     createdAt: row.created_at,
     rank: row.rank,
-  }))
+  }
 }
 
 /** Most recent messages of one session, oldest-first, for the working set. */

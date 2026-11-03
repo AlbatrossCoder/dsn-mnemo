@@ -269,6 +269,8 @@ for await (const chunk of ctx.llm.stream({
 - **HMR 只能重载「配置树」，不能重载插件源码**：改 profile patch 会触发重组，但改 `lib/index.js` 不会让已加载的模块重新导入——loader 按 entry 名称缓存模块命名空间，同一 `file://` 路径再次挂载会复用旧命名空间。`hmr.root` 要**重启后**才生效。所以开发期改代码必须重启 DSH，或用 `scripts/harness-test.mjs`（可直接用 DSH 自带 Electron 运行）验证。
 - 插件 apply 抛错在桌面端没有可见日志；已在 `apply` 外层加 `~/.dsh/mnemo/last-error.log` 记录（仅在失败时写），方便重启后定位装载问题。
 - 实测：`scripts/harness-test.mjs` 在 **DSH 自带 Electron 运行时**里跑通（同一套 `node:sqlite`、同一批服务），五个工具注册、事件链路、稳定前缀、前置浮现全部通过。
+- **补判去重**：`sessions.diary_judged_at` 记录上次判断时间，`catchUp()` 只处理 `last_active_at > diary_judged_at` 的会话；判断调用前先写标记，provider 故障不会让每次重启都重判同一段对话。
+- **日志检索也补了字符兜底**：`recall(scope=log)` 与日记共用 `db/char-search.ts` 的实义汉字匹配，避免「看海 / 看了海」在 L0 里 0 命中。
 
 实现备注（P5 期间确认）：
 

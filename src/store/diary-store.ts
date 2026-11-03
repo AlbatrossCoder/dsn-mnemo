@@ -8,6 +8,7 @@
  * @module dsn-mnemo/store/diary-store
  */
 import type { DatabaseSync } from 'node:sqlite'
+import { cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
 
 export interface DiaryInput {
@@ -83,11 +84,6 @@ export function searchDiaries(
   return searchDiariesByCharacters(db, query, limit)
 }
 
-/** Characters that carry no retrieval value on their own. */
-const CJK_STOPWORDS = new Set(
-  '的了是在我有和就不没都会要你他她它吗呢吧啊很太这那也还个上下着过把被让给对从到说想'.split(''),
-)
-
 /**
  * Last-resort character search.
  *
@@ -98,9 +94,8 @@ const CJK_STOPWORDS = new Set(
  * that carry filler characters.
  */
 function searchDiariesByCharacters(db: DatabaseSync, query: string, limit: number): DiaryHit[] {
-  const unique = [...new Set([...query].filter((char) => /\p{Script=Han}/u.test(char) && !CJK_STOPWORDS.has(char)))]
-  if (unique.length < 2) return []
-  const chars = unique.slice(0, 8)
+  const chars = cjkChars(query)
+  if (chars.length < 2) return []
   const where = chars.map(() => 'content like ?').join(' or ')
   const rows = db
     .prepare(

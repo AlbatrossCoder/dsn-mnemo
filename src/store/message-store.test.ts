@@ -53,6 +53,25 @@ test('searchMessages finds Chinese content and reports role', () => {
   }
 })
 
+test('character fallback finds rephrased Chinese in logs', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 's1', 1)
+    insertMessage(db, {
+      sessionId: 's1',
+      seq: 1,
+      turn: 1,
+      role: 'user',
+      content: '下周三去看了海，风很大',
+      raw: '{}',
+    })
+    const hits = searchMessages(db, '看海')
+    assert.equal(hits.length, 1)
+  } finally {
+    db.close()
+  }
+})
+
 test('listRecentMessages returns the tail in chronological order', () => {
   const db = openDatabase(':memory:')
   try {
