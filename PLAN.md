@@ -252,6 +252,20 @@ for await (const chunk of ctx.llm.stream({
 - **任务**：关系阶段公式、全部配置项、边界测试（空库/超长日志/无锚点/LLM 失败/磁盘满）、README 更新、DESIGN.md 补「实现修正」章节、Windows 冒烟。
 - **验收**：Windows 上从零安装 → 四层记忆跑通；卸载后无残留。
 
+### 进度（2026-11-03，Windows 11）
+
+| 阶段 | 状态 | 证据 |
+|---|---|---|
+| P0 | ✅ | patch `insert` 装载成功；桌面端模型调用 `mnemo_ping` 返回 `mnemo 0.1.0 ok (C:/Users/admin/.dsh/mnemo/mnemo.db)`；`scripts/harness-test.mjs` 在裸 Cordis + `ToolRuntime` 里注册并执行通过 |
+| P1 | ✅ | `node --test "lib/**/*.test.js"` 15/15；覆盖迁移幂等、外键约束、2 字/多字中文命中、`bm25` 排序、索引重建、空库与纯标点查询 |
+| P2 | ⬜ | — |
+| P3–P6 | ⬜ | — |
+
+实现备注（P1 期间确认）：
+
+- `Intl.Segmenter('zh')` 对常见词（记忆/系统/难过）切分正确，但会把部分词切开（如「插件」→`插 件`、「本鲸」→`本 鲸`）。因为索引与查询共用同一函数，检索仍然可用；P2 评估召回质量时再决定是否补 bigram 兜底。
+- FTS5 外部内容表的 `rebuild` 命令会去读未分词的 `content` 列，**不可用**；`rebuildIndexes()` 改为 `delete-all` + 从 `*_seg` 列重灌。
+
 ---
 
 ## 6. 待决 3 项

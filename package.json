@@ -14,7 +14,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -w -p tsconfig.json",
-    "test": "node --test lib/**/*.test.js"
+    "test": "node --test \"lib/**/*.test.js\"",
+    "verify": "pnpm run build && pnpm run test"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",

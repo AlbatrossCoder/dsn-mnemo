@@ -1,2 +1,2 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Keep sources UTF-8 with LF in the working tree on every platform.
+* text=auto eol=lf
