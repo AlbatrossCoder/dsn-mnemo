@@ -32,6 +32,9 @@ export const inject = ['tools', 'sessions', 'systemPrompt', 'llm']
 export const Config = z.object({
   dbPath: z.string().default('~/.dsh/mnemo/mnemo.db'),
   diaryIdleMinutes: z.natural().min(5).max(1440).default(20),
+  diaryMaxTurns: z.natural().min(10).max(500).default(30),
+  diaryMaxChars: z.natural().min(2000).max(200000).default(12000),
+  diaryImmediateOnImportant: z.boolean().default(true),
   diaryMaxPerSession: z.natural().default(3),
   diaryProvider: z.string().default('deepseek-account'),
   diaryModel: z.string().default('deepseek-flash'),
@@ -46,7 +49,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.6.6'
+const VERSION = '0.7.0'
 
 /**
  * Optional diary trace, enabled by `diaryDebug`. It sits next to the database
@@ -106,6 +109,9 @@ function setup(ctx: Context, config: MnemoConfig): void {
     db,
     idleMs: config.diaryIdleMinutes * 60_000,
     maxPerSession: config.diaryMaxPerSession,
+    maxTurns: config.diaryMaxTurns,
+    maxChars: config.diaryMaxChars,
+    immediateOnImportant: config.diaryImmediateOnImportant,
     personaHint: config.diaryPersonaHint,
     onError: recordError,
     log: config.diaryDebug ? createDiaryLogger(config.dbPath) : undefined,

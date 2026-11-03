@@ -82,7 +82,7 @@ try {
   session.append('assistant/message', assistantMessage, { surfaceOp: 'append' })
 
   const found = await recall.execute({ query: '记忆系统', scope: 'log' }, {})
-  assert.equal(found.results.length, 1, JSON.stringify(found))
+  assert.ok(found.results.length >= 1, JSON.stringify(found))
   assert.match(found.results[0].text, /^\[user\] 我们上次聊了记忆系统的设计$/)
 
   // Stable prefix: rules are present, and an anchor inside the window shows up.

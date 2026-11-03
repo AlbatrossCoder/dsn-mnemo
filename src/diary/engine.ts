@@ -30,6 +30,12 @@ export interface DiaryEngineOptions {
   readonly idleMs: number
   /** Hard cap on diaries written per session. */
   readonly maxPerSession: number
+  /** Judged turns since the last attempt that force an immediate judgement. */
+  readonly maxTurns?: number
+  /** Judged characters since the last attempt that force an immediate judgement. */
+  readonly maxChars?: number
+  /** Run the judgement immediately when the latest turn looks important. */
+  readonly immediateOnImportant?: boolean
   readonly personaHint?: string
   readonly scheduler?: Scheduler
   readonly now?: () => Date
@@ -53,9 +59,20 @@ interface SessionRow {
 const RECENT_MESSAGE_LIMIT = 12
 const MIN_TRANSCRIPT_CHARS = 30
 const MAX_CATCH_UP_AGE_MS = 30 * 86_400_000
+const DEFAULT_MAX_TURNS = 30
+const DEFAULT_MAX_CHARS = 12_000
+
+/**
+ * Cues that a turn carries something worth remembering *now* rather than
+ * after the idle window. Deliberately narrow: a false positive costs one
+ * short model call, a false negative just falls back to the other triggers.
+ */
+const IMPORTANT_CUES =
+  /生日|纪念日|约定|答应|承诺|第一次|最后一次|再也不|分手|离开|去世|结婚|怀孕|生病|住院|吵架|和好|道歉|难过|哭|想你|喜欢你|害怕|孤独|重要|决定|辞职|搬家|考试|面试|录取|礼物|惊喜/
 
 export class DiaryEngine {
   private readonly timers = new Map<string, unknown>()
+  private readonly running = new Set<string>()
   private readonly scheduler: Scheduler
   private disposed = false
 
@@ -63,12 +80,32 @@ export class DiaryEngine {
     this.scheduler = options.scheduler ?? defaultScheduler
   }
 
-  /** Arm (or re-arm) the idle timer for one session. */
+  /**
+   * Called when a turn completes.
+   *
+   * Three triggers, checked in order:
+   * 1. the latest turn contains an "important" cue → judge immediately;
+   * 2. the conversation since the last judgement is long enough → judge now;
+   * 3. otherwise arm the idle timer.
+   */
   noteTurnEnd(sessionId: string): void {
     if (this.disposed) return
     this.cancel(sessionId)
+
+    if (this.options.immediateOnImportant !== false && this.hasImportantCue(sessionId)) {
+      this.options.log?.(`trigger=important session=${sessionId}`)
+      void this.flush(sessionId)
+      return
+    }
+    if (this.isLongEnough(sessionId)) {
+      this.options.log?.(`trigger=length session=${sessionId}`)
+      void this.flush(sessionId)
+      return
+    }
+
     const handle = this.scheduler.set(() => {
       this.timers.delete(sessionId)
+      this.options.log?.(`trigger=idle session=${sessionId}`)
       void this.flush(sessionId)
     }, this.options.idleMs)
     this.timers.set(sessionId, handle)
@@ -84,6 +121,34 @@ export class DiaryEngine {
     return this.timers.size
   }
 
+  /** Messages recorded since the last judgement attempt. */
+  private recentSinceJudge(sessionId: string): { turns: number; chars: number; text: string } {
+    const db = this.options.db
+    const session = db.prepare('select diary_judged_at from sessions where id = ?').get(sessionId) as
+      | { diary_judged_at: string | null }
+      | undefined
+    const since = session?.diary_judged_at ?? '1970-01-01 00:00:00'
+    const rows = db
+      .prepare('select role, content from messages where session_id = ? and created_at > ? order by id')
+      .all(sessionId, since) as unknown as MessageRow[]
+    return {
+      turns: rows.filter((row) => row.role === 'user').length,
+      chars: rows.reduce((sum, row) => sum + row.content.length, 0),
+      text: rows.map((row) => row.content).join('\n'),
+    }
+  }
+
+  private hasImportantCue(sessionId: string): boolean {
+    return IMPORTANT_CUES.test(this.recentSinceJudge(sessionId).text)
+  }
+
+  private isLongEnough(sessionId: string): boolean {
+    const { turns, chars } = this.recentSinceJudge(sessionId)
+    const maxTurns = this.options.maxTurns ?? DEFAULT_MAX_TURNS
+    const maxChars = this.options.maxChars ?? DEFAULT_MAX_CHARS
+    return turns >= maxTurns || chars >= maxChars
+  }
+
   /**
    * Judge and (maybe) write one session's diary now.
    *
@@ -92,6 +157,10 @@ export class DiaryEngine {
   async flush(sessionId: string): Promise<boolean> {
     const { db } = this.options
     this.options.log?.(`flush session=${sessionId}`)
+    // One judgement at a time per session: the idle timer and a length
+    // trigger can fire close together.
+    if (this.running.has(sessionId)) return false
+    this.running.add(sessionId)
     try {
       const written = db
         .prepare('select count(*) as total from diaries where session_id = ?')
@@ -132,6 +201,8 @@ export class DiaryEngine {
       // A failed judgement must never surface to the conversation.
       this.options.onError?.(error)
       return false
+    } finally {
+      this.running.delete(sessionId)
     }
   }
 

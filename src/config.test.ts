@@ -15,3 +15,14 @@ test('diaryIdleMinutes rejects values outside 5..1440', () => {
   assert.throws(() => Config({ diaryIdleMinutes: 4 }))
   assert.throws(() => Config({ diaryIdleMinutes: 1441 }))
 })
+
+test('length triggers have usable defaults and bounds', () => {
+  const parsed = Config({})
+  assert.equal(parsed.diaryMaxTurns, 30)
+  assert.equal(parsed.diaryMaxChars, 12_000)
+  assert.equal(parsed.diaryImmediateOnImportant, true)
+  assert.equal(Config({ diaryMaxTurns: 10 }).diaryMaxTurns, 10)
+  assert.equal(Config({ diaryMaxChars: 2000 }).diaryMaxChars, 2000)
+  assert.throws(() => Config({ diaryMaxTurns: 9 }))
+  assert.throws(() => Config({ diaryMaxChars: 1999 }))
+})

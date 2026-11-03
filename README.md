@@ -4,7 +4,7 @@
 
 `dsn-mnemo` 是一个 DeepSeek Harness（DSH）插件。它**不负责人设**——人设由独立的 persona 插件或 preset 提供；它只做一件事：记录发生过什么、把值得留下的沉淀成日记、在合适的时候把对的事浮现进当前对话。
 
-**当前状态**：npm 上最新正式版是 `0.6.5`；仓库 `main` 已到 `0.6.6`（L0 只记聊天内容、默认不存思考），**待确认后再发布**。单测 91/91、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
+**当前状态**：npm 上最新正式版是 `0.6.5`；仓库 `main` 已到 `0.7.0`（日记三种触发、L0 只记聊天内容、默认不存思考），**待确认后再发布**。单测 95/95、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
 
 ---
 
@@ -25,7 +25,7 @@
 - **缓存友好**：稳定前缀（规则 + 当天锚点）字节稳定，动态记忆只走 `context()` 与工具返回；
 - **中文检索**：`Intl.Segmenter` 预分词 + FTS5，再用字符级兜底覆盖「看海 / 看了海」这类分词错位；
 - **零第三方运行时依赖**：`node:sqlite` 单文件数据库，无原生模块、无外部向量库；
-- **克制的日记写入**：空闲触发 + 一次极短判断调用 + 每会话上限，宁缺毋滥；
+- **克制的日记写入**：三种触发——重要事件立即写、内容过长主动写、空闲 20 分钟写；一次极短判断调用 + 每会话上限，宁缺毋滥；
 - **严格的日记修改**：`diary_update` 必须给理由，改前自动写 `diary_revisions`；
 - **与人设解耦**：只接收可选的 `diaryPersonaHint`，不内置任何角色 prompt。
 
@@ -102,6 +102,9 @@ $pnpm = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnp
 |---|---|---|
 | `dbPath` | `~/.dsh/mnemo/mnemo.db` | SQLite 单文件路径（支持 `~`） |
 | `diaryIdleMinutes` | `20` | 空闲多久后触发日记判断；范围 5–1440 分钟 |
+| `diaryMaxTurns` | `30` | 距上次判断的对话超过多少轮后主动写日记；范围 10–500 |
+| `diaryMaxChars` | `12000` | 距上次判断的对话超过多少字符后主动写日记；范围 2000–200000 |
+| `diaryImmediateOnImportant` | `true` | 出现「生日/约定/离别」等重要信号时立即判断，不等空闲 |
 | `diaryMaxPerSession` | `3` | 每会话日记上限 |
 | `diaryProvider` | `deepseek-account` | 判断调用使用的 provider route |
 | `diaryModel` | `deepseek-flash` | 判断调用使用的模型 |

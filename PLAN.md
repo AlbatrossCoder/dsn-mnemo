@@ -275,6 +275,7 @@ for await (const chunk of ctx.llm.stream({
 - 本插件同时是**可安装的组合包**：`cordis.patch.yml` + `package.json` 的 `dsh.bundle.patch`；用临时 profile（`dsh.profile.bundles: ["@deepseek-ai/dsh-base", "dsn-mnemo"]`）`--dump-config` 已验证能组合出 `- id: dsn-mnemo` 行，市场索引样例也能通过 DSH 的 `parseMarketIndex` 校验。
 - **L0 语义修正（0.6.6，未发布）**：L0 只记聊天内容。recorder 现在只收 `user/message`（且 `source.kind === 'user'`）与 `assistant/message` 的可见文本；思考、工具调用、工具结果、注入上下文（time-context / goal / runtime-context / skill-catalog）一律不入库。`scripts/repair-messages.mjs --prune-tools` 可把历史库清理成同一语义（会先 `VACUUM INTO` 备份）。
 - **多用户（QQ 群）分析**见 [docs/multi-user.md](docs/multi-user.md)：QQ 事件本身带稳定的 `user_id`/`group_id`，可辨别用户；但插件目前不接收身份，需要桥传 `source`，并按方案 A（一人一会话）或方案 B（一群一会话 + speaker/subject 维度）改造。
+- **日记触发规则（0.7.0，未发布）**：三种触发——① 重要信号（生日/约定/离别/情绪等关键词）在 `turn/end` 立即判断；② 距上次判断累计 ≥ `diaryMaxTurns`（默认 30 轮）或 ≥ `diaryMaxChars`（默认 12000 字符）立即判断；③ 都不满足时武装空闲计时（默认 20 分钟）。同一会话的判断有并发互斥；判断过一次（含 NO_DIARY）计数自然归零。
 
 实现备注（P6 期间确认）：
 

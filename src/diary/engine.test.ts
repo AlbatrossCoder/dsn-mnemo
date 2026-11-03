@@ -48,6 +48,74 @@ function makeScheduler(): { scheduler: Scheduler; entries: Array<{ id: number; f
   }
 }
 
+test('an important cue judges immediately instead of waiting', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    seedSession(db, 's1', ['今天是我的生日，主人送了我一个礼物', '生日快乐，今天一定很难忘'])
+    const { scheduler, entries } = makeScheduler()
+    const engine = new DiaryEngine({
+      db,
+      generate: async () => DIARY_REPLY,
+      idleMs: 1000,
+      maxPerSession: 3,
+      scheduler,
+    })
+    engine.noteTurnEnd('s1')
+    assert.equal(entries.length, 0, 'must not arm the idle timer')
+    await new Promise((resolve) => setImmediate(resolve))
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(countDiaries(db), 1)
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
+test('a long conversation judges immediately', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    seedSession(db, 's1', ['第一句话', '回复一', '第二句话', '回复二', '第三句话', '回复三'])
+    const { scheduler, entries } = makeScheduler()
+    const engine = new DiaryEngine({
+      db,
+      generate: async () => DIARY_REPLY,
+      idleMs: 1000,
+      maxPerSession: 3,
+      maxTurns: 2,
+      scheduler,
+    })
+    engine.noteTurnEnd('s1')
+    assert.equal(entries.length, 0, 'length trigger must not arm the idle timer')
+    await new Promise((resolve) => setImmediate(resolve))
+    await new Promise((resolve) => setImmediate(resolve))
+    assert.equal(countDiaries(db), 1)
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
+test('a quiet short turn falls back to the idle timer', () => {
+  const db = openDatabase(':memory:')
+  try {
+    seedSession(db, 's1', ['今天天气不错', '适合出去走走'])
+    const { scheduler, entries } = makeScheduler()
+    const engine = new DiaryEngine({
+      db,
+      generate: async () => DIARY_REPLY,
+      idleMs: 1000,
+      maxPerSession: 3,
+      scheduler,
+    })
+    engine.noteTurnEnd('s1')
+    assert.equal(entries.length, 1)
+    assert.equal(entries[0]?.ms, 1000)
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
 test('turn end arms one idle timer and activity cancels it', () => {
   const db = openDatabase(':memory:')
   try {
