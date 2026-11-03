@@ -4,7 +4,7 @@
 
 `dsn-mnemo` 是一个 DeepSeek Harness（DSH）插件。它**不负责人设**——人设由独立的 persona 插件或 preset 提供；它只做一件事：记录发生过什么、把值得留下的沉淀成日记、在合适的时候把对的事浮现进当前对话。
 
-**当前状态**：`0.6.2` 已发布到 npm（`npm i dsn-mnemo`），P0–P6 已实现，单测 83/83、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
+**当前状态**：`0.6.3` 已发布到 npm（`npm i dsn-mnemo`），P0–P6 已实现，单测 86/86、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
 
 ---
 
@@ -101,7 +101,7 @@ $pnpm = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnp
 | 键 | 默认值 | 说明 |
 |---|---|---|
 | `dbPath` | `~/.dsh/mnemo/mnemo.db` | SQLite 单文件路径（支持 `~`） |
-| `diaryIdleMinutes` | `30` | 空闲多久后触发日记判断 |
+| `diaryIdleMinutes` | `20` | 空闲多久后触发日记判断；范围 5–1440 分钟 |
 | `diaryMaxPerSession` | `3` | 每会话日记上限 |
 | `diaryProvider` | `deepseek-account` | 判断调用使用的 provider route |
 | `diaryModel` | `deepseek-flash` | 判断调用使用的模型 |

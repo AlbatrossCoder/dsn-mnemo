@@ -264,7 +264,7 @@ for await (const chunk of ctx.llm.stream({
 | P5 | ✅ | 日记引擎：`turn/end(completed)` → 空闲计时 → 单次轻量判断 → 写入；`diary_write` / `diary_update`（严格理由 + `diary_revisions` 备份）；启动 `catchUp()` 补判。单测 70/70。真机 30 分钟静置与真实模型调用待重启后验收 |
 | P6 | ✅ | 关系阶段公式落地（`turn/end` 更新）；README 重写为可安装版本；DESIGN 补「实现修正」；边界测试（超长对话 prompt 有界、空库、模型失败、无锚点）加入；单测 74/74。真机冒烟仍待重启 |
 | 真机 0.6.1 | ✅ | 重启后装载成功：`mnemo_ping` 返回 `0.6.1`；系统提示出现 `mnemo:rules` 稳定前缀；L0 开始记录（181+ 条，实时增长）；`recall` 真机可用；`diary_consolidate` 真实调用了一次判断（模型返回无值得写的结论，无异常）；`diary_write` 写入 + FTS 命中 + 删除清理均验证 |
-| npm 发布 | ✅ | `0.6.1` 与 `0.6.2` 已发布（`latest` = `0.6.2`），registry 元数据确认 `dsh.bundle.patch` 与 `engines.dsh`，发布的 tarball 42 个文件、不含测试；首次发布时 npm 生成过一个 `0.0.0-stage` 占位版本（无法用 bypass token 删除，`latest` 已指向 `0.6.2`，不影响安装） |
+| npm 发布 | ✅ | `0.6.1`–`0.6.3` 已发布（`latest` = `0.6.3`），registry 元数据确认 `dsh.bundle.patch` 与 `engines.dsh`，发布的 tarball 42 个文件、不含测试；首次发布时 npm 生成过一个 `0.0.0-stage` 占位版本（无法用 bypass token 删除，`latest` 已指向最新正式版，不影响安装） |
 
 实现备注（真机验收期间确认）：
 

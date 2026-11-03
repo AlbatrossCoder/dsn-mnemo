@@ -31,7 +31,7 @@ export const inject = ['tools', 'sessions', 'systemPrompt', 'llm']
 /** User-facing configuration (mirrors DESIGN.md §8). */
 export const Config = z.object({
   dbPath: z.string().default('~/.dsh/mnemo/mnemo.db'),
-  diaryIdleMinutes: z.natural().default(30),
+  diaryIdleMinutes: z.natural().min(5).max(1440).default(20),
   diaryMaxPerSession: z.natural().default(3),
   diaryProvider: z.string().default('deepseek-account'),
   diaryModel: z.string().default('deepseek-flash'),
@@ -45,7 +45,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.6.2'
+const VERSION = '0.6.3'
 
 /**
  * Optional diary trace, enabled by `diaryDebug`. It sits next to the database
