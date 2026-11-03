@@ -30,6 +30,14 @@ test('parses memory points from the same answer', () => {
   assert.doesNotMatch(decision?.content ?? '', /POINTS/)
 })
 
+test('parses a secret sensitivity flag', () => {
+  const decision = parseDiaryResponse(
+    ['IMPORTANCE: 0.9', 'EMOTION: 0.7', 'TAGS: 私事', 'SENSITIVITY: secret', '', '主人说了一件不能公开的事。'].join('\n'),
+  )
+  assert.equal(decision?.sensitivity, 'secret')
+  assert.doesNotMatch(decision?.content ?? '', /SENSITIVITY/)
+})
+
 test('NO_DIARY means no diary', () => {
   assert.equal(parseDiaryResponse('NO_DIARY'), null)
   assert.equal(parseDiaryResponse('no_diary'), null)

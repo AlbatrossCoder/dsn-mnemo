@@ -113,6 +113,17 @@ export function countDiariesFor(db: DatabaseSync, subject: SubjectRef): number {
   return row?.total ?? 0
 }
 
+/** Number of diaries written for one subject today (local calendar day). */
+export function countDiariesForToday(db: DatabaseSync, subject: SubjectRef): number {
+  const row = db
+    .prepare(
+      `select count(*) as total from diaries
+        where subject_kind = ? and subject_id = ? and created_at >= datetime('now', 'start of day')`,
+    )
+    .get(subject.kind, subject.id) as { total: number } | undefined
+  return row?.total ?? 0
+}
+
 /**
  * Keyword search over diaries.
  *

@@ -43,6 +43,23 @@ function describeDistance(target: string, today: string): string {
   return `已经过去 ${Math.abs(distance)} 天`
 }
 
+/** A dated line for per-agent group anchors (occurrence may differ from the base date). */
+export interface AnchorLine {
+  readonly eventName: string
+  readonly occurrenceDate: string
+  readonly toneHint: string | null
+}
+
+/** Render anchors as context lines; `''` when there is nothing due. */
+export function renderAnchorLines(anchors: readonly AnchorLine[], today: string): string {
+  if (anchors.length === 0) return ''
+  const lines = anchors.map((anchor) => {
+    const tone = anchor.toneHint === null || anchor.toneHint === '' ? '' : `，${anchor.toneHint}`
+    return `- ${anchor.occurrenceDate} ${anchor.eventName}（${describeDistance(anchor.occurrenceDate, today)}${tone}）`
+  })
+  return `今天是 ${today}，这些日子临近：\n${lines.join('\n')}`
+}
+
 /**
  * Render the stable prefix for one day.
  *

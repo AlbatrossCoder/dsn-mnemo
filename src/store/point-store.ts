@@ -10,7 +10,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
-import type { SubjectRef } from './diary-store.js'
+import { insertDiary, type SubjectRef } from './diary-store.js'
 
 export type PointKind = 'topic' | 'event' | 'person' | 'open_thread'
 
@@ -80,7 +80,7 @@ export function insertPoint(db: DatabaseSync, input: PointInput): number {
       segment(input.text),
       input.importance ?? 0.5,
       input.source ?? 'diary',
-      `+${ttl} days`,
+      `${ttl >= 0 ? "+" : ""}${ttl} days`,
     )
   return Number(result.lastInsertRowid)
 }
@@ -89,6 +89,90 @@ export function insertPoint(db: DatabaseSync, input: PointInput): number {
 export function purgeExpiredPoints(db: DatabaseSync): number {
   const result = db.prepare("delete from memory_points where expires_at <= datetime('now')").run()
   return Number(result.changes)
+}
+
+const PROMOTE_IMPORTANCE = 0.85
+const PROMOTE_MENTIONS = 2
+
+export interface RecordedPoint {
+  readonly id: number
+  readonly mentions: number
+  readonly promoted: boolean
+}
+
+/**
+ * Record a point, merging an identical live one.
+ *
+ * A point becomes a diary when it is mentioned again (`mentions >= 2`) or when
+ * it already carries high importance. Promotion happens once (`promoted = 1`).
+ */
+export function recordPoint(db: DatabaseSync, input: PointInput): RecordedPoint {
+  const text = input.text.trim()
+  if (text.length === 0) throw new Error('point text must not be empty')
+  const importance = input.importance ?? 0.5
+
+  const existing = db
+    .prepare(
+      `select id, mentions, promoted, importance from memory_points
+        where subject_kind = ? and subject_id = ? and text = ? and expires_at > datetime('now')`,
+    )
+    .get(input.subject.kind, input.subject.id, text) as
+    | { id: number; mentions: number; promoted: number; importance: number }
+    | undefined
+
+  if (existing !== undefined) {
+    const mentions = existing.mentions + 1
+    const mergedImportance = Math.max(existing.importance, importance)
+    db.prepare('update memory_points set mentions = ?, last_seen_at = datetime(\'now\'), importance = ? where id = ?').run(
+      mentions,
+      mergedImportance,
+      existing.id,
+    )
+    const shouldPromote = existing.promoted === 0 && (mentions >= PROMOTE_MENTIONS || mergedImportance >= PROMOTE_IMPORTANCE)
+    if (shouldPromote) {
+      insertDiary(db, {
+        subjectKind: input.subject.kind,
+        subjectId: input.subject.id,
+        visibility: input.subject.kind === 'group' ? 'public' : 'private',
+        content: text,
+        importance: mergedImportance,
+        typeTags: ['记忆点晋升'],
+      })
+      db.prepare('update memory_points set promoted = 1 where id = ?').run(existing.id)
+    }
+    return { id: existing.id, mentions, promoted: existing.promoted === 1 || shouldPromote }
+  }
+
+  const ttl = input.ttlDays ?? 7
+  const result = db
+    .prepare(
+      `insert into memory_points(subject_kind, subject_id, kind, text, content_seg, importance, source, expires_at)
+       values (?, ?, ?, ?, ?, ?, ?, datetime('now', ?))`,
+    )
+    .run(
+      input.subject.kind,
+      input.subject.id,
+      input.kind ?? 'topic',
+      text,
+      segment(text),
+      importance,
+      input.source ?? 'diary',
+      `${ttl >= 0 ? "+" : ""}${ttl} days`,
+    )
+  const id = Number(result.lastInsertRowid)
+  const promoted = importance >= PROMOTE_IMPORTANCE
+  if (promoted) {
+    insertDiary(db, {
+      subjectKind: input.subject.kind,
+      subjectId: input.subject.id,
+      visibility: input.subject.kind === 'group' ? 'public' : 'private',
+      content: text,
+      importance,
+      typeTags: ['记忆点晋升'],
+    })
+    db.prepare('update memory_points set promoted = 1 where id = ?').run(id)
+  }
+  return { id, mentions: 1, promoted }
 }
 
 /** Number of live points for a subject. */

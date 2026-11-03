@@ -8,9 +8,9 @@
  * @module dsn-mnemo/diary/engine
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { countDiariesFor, insertDiary } from '../store/diary-store.js'
+import { countDiariesForToday, insertDiary } from '../store/diary-store.js'
 import { sessionSubject } from '../store/message-store.js'
-import { insertPoint } from '../store/point-store.js'
+import { purgeExpiredPoints, recordPoint } from '../store/point-store.js'
 import { buildJudgePrompt, parseDiaryResponse } from './judge.js'
 
 /** Injectable timer seam so tests never wait thirty real minutes. */
@@ -192,8 +192,9 @@ export class DiaryEngine {
     if (this.running.has(sessionId)) return false
     this.running.add(sessionId)
     try {
+      purgeExpiredPoints(db)
       const subject = sessionSubject(db, sessionId)
-      if (countDiariesFor(db, subject) >= this.options.maxPerSession) return false
+      if (countDiariesForToday(db, subject) >= this.options.maxPerSession) return false
 
       const rows = db
         .prepare('select role, content, addressed from messages where session_id = ? order by seq desc limit ?')
@@ -219,11 +220,13 @@ export class DiaryEngine {
       this.options.log?.(`judged session=${sessionId} chars=${transcript.length} written=${decision !== null}`)
       if (decision === null) return false
 
+      const visibility =
+        decision.sensitivity ?? (subject.kind === 'group' ? ('public' as const) : ('private' as const))
       insertDiary(db, {
         sessionId,
         subjectKind: subject.kind,
         subjectId: subject.id,
-        visibility: subject.kind === 'group' ? 'public' : 'private',
+        visibility,
         content: decision.content,
         importance: decision.importance,
         emotion: decision.emotion,
@@ -231,7 +234,7 @@ export class DiaryEngine {
       })
       // The same call distils short-lived points; no extra model request.
       for (const point of decision.points) {
-        insertPoint(db, { subject, text: point, importance: decision.importance, source: 'diary' })
+        recordPoint(db, { subject, text: point, importance: decision.importance, source: 'diary' })
       }
       return true
     } catch (error) {

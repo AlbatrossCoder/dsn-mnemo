@@ -2,9 +2,7 @@
 
 > 鲸鱼娘的**记忆运行时**。让「想起」发生在正确的时机，以正确的形态。
 
-`dsn-mnemo` 是一个 DeepSeek Harness（DSH）插件。它**不负责人设**——人设由独立的 persona 插件或 preset 提供；它只做一件事：记录发生过什么、把值得留下的沉淀成日记、在合适的时候把对的事浮现进当前对话。
-
-**当前状态**：npm 上最新正式版是 `0.6.6`（L0 只记聊天内容、默认不存思考）；仓库 `main` 已到 `0.7.0`（日记三种触发），**待确认后再发布**。单测 95/95、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载。剩余验收项见 [PLAN.md](PLAN.md) §5。
+`dsn-mnemo` 是一个 DeepSeek Harness（DSH）插件。它**不负责人设，也不实现任何聊天协议**——人设由独立的 persona 插件或 preset 提供，QQ/Discord 等通道由各自的通道插件提供；它只做一件事：记录发生过什么、把值得留下的沉淀成记忆、在合适的时候把对的事浮现进当前对话。
 
 ---
 
@@ -16,48 +14,75 @@
 
 - **留下痕迹**：聊天内容落盘（人类消息 + 助手可见回复），不必依赖窗口内的对话历史；思考过程、工具调用与工具结果不入库；
 - **主动沉淀**：在对话真正沉落之后（默认 20 分钟无活动），判断这段交流是否值得写给「下一个自己」；
-- **恰当地想起**：有线索时按需深掘，有时间/情绪线索时自动浮现，有纪念日时被锚点唤起。
+- **恰当地想起**：有线索时按需深掘，有时间/情绪线索时按**关联**浮现，有纪念日时被锚点唤起——全部按需，不设固定 token 预算。
 
 ## 核心特性
 
-- **四层记忆**：L0 聊天日志 → L1 日记 → L2 工作层 → L3 锚点，职责与存储策略分离；
-- **三种回忆行为**：前置浮现（按 agent 的运行时上下文）、按需深掘（`recall` 工具）、锚点触发（日期窗口注入稳定前缀）；
-- **缓存友好**：稳定前缀（规则 + 当天锚点）字节稳定，动态记忆只走 `context()` 与工具返回；
+- **四层记忆**：L0 聊天日志 → L1 日记 → L2 记忆点 → L3 锚点，职责与生命周期分离；
+- **短效 + 长效**：L2 记忆点保留 7 天，重复出现或足够重要时晋升为 L1 日记；L1/L3 长期保留；
+- **按需、关联**：前置浮现用当前这句话做关联检索（词面 + 实体 + 时间模式），只有过阈值的才注入；上限 20 条 / 600 token，**可以为 0 条**；
+- **主体化**：私聊记忆归 `user:<id>`，群聊记忆归 `group:<id>`；跨主体默认隔离，群聊不串私聊内容；
+- **三级可见性**：`public` / `private` / `secret`；群聊里 `secret` 硬过滤，`private` 只允许暗示；
+- **通道无关**：只消费 DSH 的 `session/event` 与消息 `source` 里的身份字段，不绑定 QQ 或任何协议；
+- **三种日记触发**：重要事件立即写、内容过长主动写、空闲 20 分钟写；一次极短判断调用，宁缺毋滥；
+- **缓存友好**：稳定前缀字节稳定，动态记忆只走 `context()` 与工具返回；
 - **中文检索**：`Intl.Segmenter` 预分词 + FTS5，再用字符级兜底覆盖「看海 / 看了海」这类分词错位；
 - **零第三方运行时依赖**：`node:sqlite` 单文件数据库，无原生模块、无外部向量库；
-- **克制的日记写入**：三种触发——重要事件立即写、内容过长主动写、空闲 20 分钟写；一次极短判断调用 + 每会话上限，宁缺毋滥；
 - **严格的日记修改**：`diary_update` 必须给理由，改前自动写 `diary_revisions`；
 - **与人设解耦**：只接收可选的 `diaryPersonaHint`，不内置任何角色 prompt。
+
+## 记忆主体
+
+所有记忆挂在 `(subject_kind, subject_id)` 上：
+
+| 场景 | 主体 | 来源 |
+|---|---|---|
+| 本地桌面私聊 | `user:local` | `source.kind === 'user'` |
+| 通道私聊 | `user:<userId>` | `source.kind === 'qq'`（或任意自定义 kind）且只有 `userId` |
+| 群聊 | `group:<groupId>` | `source.kind === 'qq'` 且带 `groupId` |
+
+通道要做的事只有一件：把稳定身份（用户 id、群 id、是否在叫助手）放进消息 `source`，并产生正常的 session 事件。通道可以是一个独立插件、外部桥或别的实现；协议适配、去重、接话策略、限流都属于通道，不属于本插件。
 
 ## 四层记忆
 
 | 层级 | 内容 | 存储 | 检索方式 |
 |---|---|---|---|
-| **L0** 聊天日志 | 人类消息 + 助手可见回复（不含思考、工具调用、工具结果与注入上下文） | `messages` + `messages_fts`（FTS5） | 词面检索，需精确线索 |
-| **L1** 日记 | 第一人称、2–3 句、带重要度与情绪标签 | `diaries` + `diaries_fts`（FTS5） | BM25 + 重要度 + 近因 |
-| **L2** 工作层 | 会话元状态、关系阶段、最近消息 | `sessions` / `work_state` | 直接读取 |
-| **L3** 锚点 | 纪念日等「到点就该被提起」的事 | `anchors` | 日期窗口匹配，注入稳定前缀 |
+| **L0** 聊天日志 | 人类消息 + 助手可见回复（不含思考、工具调用、工具结果与注入上下文） | `messages` + `messages_fts`（FTS5） | 词面检索，按主体过滤 |
+| **L1** 日记 | 第一人称、2–3 句、带重要度/情绪/可见性 | `diaries` + `diaries_fts`（FTS5） | BM25 + 重要度 + 近因 |
+| **L2** 记忆点 | 一句话的小事/话题/人物/待办，7 天过期 | `memory_points` + `memory_points_fts`（FTS5） | 关联检索；重复/重要 → 晋升 L1 |
+| **L3** 锚点 | 纪念日、约定、截止日期，可重复 | `anchors` | 日期窗口匹配，注入主体上下文 |
 
-L0 刻意**不建向量索引**：词面检索更接近「需要想起准确的词才能找到」的真实体验。
+L0 刻意**不建向量索引**：词面检索更接近「需要想起准确的词才能找到」的真实体验。L2 是短效层，过期即清理；L1/L3 不做自动过期。
 
 ## 三种回忆行为
 
-1. **前置浮现**：用户消息含时间指代（「上次」「你还记得吗」）或情绪词时，检索日记 top N，渲染进该 agent 的 `systemPrompt.context()`。上一轮的浮现内容会被新快照取代，不会累积。
-2. **按需深掘**：模型调用 `recall`。`scope=diary` 搜日记（BM25 + 重要度 + 近因），`scope=log` 搜原始对话（需要更精确的线索）。
-3. **锚点触发**：跨日时按日期窗口检查锚点，命中就写进稳定前缀；同一天内字节不变。
+1. **前置浮现**：用户消息含时间指代（「上次」「你还记得吗」）或情绪词时，用这句话关联检索 L2 记忆点与 L1 日记，渲染进该 agent 的 `systemPrompt.context()`。上一轮的浮现内容会被新快照取代，不会累积。
+2. **按需深掘**：模型调用 `recall`。`scope=diary` 搜日记（BM25 + 重要度 + 近因），`scope=log` 搜聊天记录（需要更精确的线索）；两者都按当前主体过滤，群聊里 `secret` 永不返回。
+3. **锚点触发**：按日期窗口检查当前主体的锚点，命中就写进上下文；支持 daily/weekly/monthly/yearly 重复。日期过了、既没提醒过也没处理过，才算「错过」。
+
+## 可见性
+
+| 级别 | 写入场景 | 群聊里 |
+|---|---|---|
+| `public` | 群里说过的 | 可正常引用 |
+| `private` | 私聊说过的 | 只允许暗示，不复述细节 |
+| `secret` | 判断模型标记的秘密 | 硬过滤，永不出现 |
+
+一对一里所有级别都可用；可见性只在「群聊要用到私聊内容」时才产生行为差异。
 
 ## 架构一览
 
 ```
 DSH 对话循环
    │
-   ├─ systemPrompt.section('mnemo:rules')   ← 稳定前缀：记忆规则 + 当天命中的锚点
-   ├─ systemPrompt.context('mnemo:recall')  ← 动态快照：前置浮现结果（每轮替换）
-   ├─ tools                                 ← recall / diary_write / diary_update / anchor_upsert
-   └─ session/event                         ← L0 落地；turn/end → 关系阶段 + 30 分钟空闲计时
-                                                    │
-                                              SQLite：L0 / L1 / L2 / L3
-                                              FTS5（Intl.Segmenter 预分词）
+   ├─ systemPrompt.section('mnemo:rules')   ← 稳定前缀：记忆规则 + 本地锚点
+   ├─ systemPrompt.context('mnemo:recall')  ← 动态快照：关联浮现结果（每轮替换）
+   ├─ systemPrompt.context('mnemo:anchors') ← 群聊主体自己的锚点（每轮替换）
+   ├─ tools                                 ← recall / diary_* / anchor_upsert / mnemo_forget / mnemo_ping
+   └─ session/event                         ← L0 落地；turn/end → 三种日记触发
+                                                     │
+                                               SQLite：L0 / L1 / L2 / L3
+                                               FTS5（Intl.Segmenter 预分词）
 ```
 
 关键约束：**稳定前缀的字节不随每轮检索结果变化**，否则前缀缓存失效。这也是把「浮现结果」放进 `context()` 而不是 `section()` 的原因。
@@ -106,7 +131,7 @@ $pnpm = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnp
 | `diaryMaxTurns` | `30` | 距上次判断的对话超过多少轮后主动写日记；范围 10–500 |
 | `diaryMaxChars` | `12000` | 距上次判断的对话超过多少字符后主动写日记；范围 2000–200000 |
 | `diaryImmediateOnImportant` | `true` | 出现「生日/约定/离别」等重要信号时立即判断，不等空闲 |
-| `diaryMaxPerSession` | `3` | 每会话日记上限 |
+| `diaryMaxPerSession` | `3` | 每个主体最多保留的日记数 |
 | `diaryProvider` | `deepseek-account` | 判断调用使用的 provider route |
 | `diaryModel` | `deepseek-flash` | 判断调用使用的模型 |
 | `diaryPersonaHint` | `""` | 可选的日记口吻提示 |
@@ -117,22 +142,11 @@ $pnpm = "$env:USERPROFILE\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\pnp
 | `recallDiaryLimit` | `5` | `recall` 日记召回条数 |
 | `recallLogLimit` | `5` | `recall` 日志召回条数 |
 
-## 关系阶段
-
-不设硬性轮数阈值，由沉淀量驱动，每次 `turn/end` 后更新一次，不调用模型：
-
-```
-score = sessions_count + diary_count × 0.5
-score < 5   → initial
-score < 20  → familiar
-score ≥ 20  → close
-```
-
 ## 开发
 
 ```powershell
 & $node $pnpm run build     # tsc → lib/
-& $node $pnpm test          # node --test，83 项
+& $node $pnpm test          # node --test
 & $node scripts\harness-test.mjs   # 真实 Service + Session + 事件链路的集成验证
 & $node scripts\mnemo-status.mjs   # 查看记忆库里现有数据
 ```
@@ -173,20 +187,20 @@ DSH 的「插件市场」不是上传中心，而是**索引驱动**的：DSH �
 
 之后用户侧的步骤：**插件 → 发现 → 添加索引源** → 粘贴索引 URL → 搜索 `dsn-mnemo` → 安装。安装由 `pluginManager.installBundle` 用 `pnpm add dsn-mnemo@<version>` 完成，profile 的 `dsh.profile.bundles` 会追加该组合包。
 
-> 注意：`package.json` 必须是**无 BOM 的 UTF-8**。带 BOM 时 DSH 读取包清单会失败并把插件行静默禁用（本研究环境踩过：桌面端表现为插件完全不加载，只在启动日志里出现一行 JSON 解析错误）。PowerShell 5.1 的 `Set-Content -Encoding utf8` 会写 BOM，改完 `package.json` 请用 Node 或支持无 BOM 的编辑器保存。
+> 注意：`package.json` 必须是**无 BOM 的 UTF-8**。带 BOM 时 DSH 读取包清单会失败并把插件行静默禁用（本环境踩过：桌面端表现为插件完全不加载，只在启动日志里出现一行 JSON 解析错误）。PowerShell 5.1 的 `Set-Content -Encoding utf8` 会写 BOM，改完 `package.json` 请用 Node 或支持无 BOM 的编辑器保存。
 
 ## 隐私
 
-记忆是**纯本地明文** SQLite：`dbPath` 可配置，默认在 `~/.dsh` 下；不要把它放到 OneDrive 之类的同步目录。删除数据库文件即清空全部记忆。
+记忆是**纯本地明文** SQLite：`dbPath` 可配置，默认在 `~/.dsh` 下；不要把它放到 OneDrive 之类的同步目录。删除数据库文件即清空全部记忆；也可以用 `mnemo_forget` 按主体清理。群聊场景下 `secret` 永不进入群上下文，`private` 只允许暗示。
 
 ## 文档
 
 - [PLAN.md](PLAN.md) — 开发计划与交接：环境实测、架构定稿、阶段进度、PC 端验证手册。
 - [DESIGN.md](DESIGN.md) — 原始设计文档；实现与设计不一致处见文末「实现修正」。
 - [docs/publishing.md](docs/publishing.md) — 发布纪律（先测后发、先问再发）与市场索引托管步骤。
-- [docs/multi-user.md](docs/multi-user.md) — 多用户环境的记忆模型（身份 / 私聊记忆 / 群记忆）与迁移草案。
-- [docs/memory-model.md](docs/memory-model.md) — **记忆系统规范（v2 草案）**：四层、两种主体、读写路径、锚点与关联检索。
-- [docs/qq-integration.md](docs/qq-integration.md) — QQ（含群聊）接入方案：通道插件 vs ACP 桥、记忆粒度与工作拆分。
+- [docs/memory-model.md](docs/memory-model.md) — **记忆系统规范**：四层、两种主体、读写路径、锚点与关联检索。
+- [docs/multi-user.md](docs/multi-user.md) — 多用户环境的记忆模型（身份 / 私聊记忆 / 群记忆）。
+- [docs/qq-integration.md](docs/qq-integration.md) — 通道接入分析（QQ 为例）；通道本身不属于本仓库。
 
 ## 许可
 

@@ -165,6 +165,9 @@ create table memory_points (
   content_seg text not null,
   importance real not null default 0.5,
   source text not null default 'diary',
+  mentions integer not null default 1,
+  promoted integer not null default 0,
+  last_seen_at text not null default (datetime('now')),
   created_at text not null default (datetime('now')),
   expires_at text not null
 );

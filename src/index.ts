@@ -9,10 +9,10 @@ import { dirname, join } from 'node:path'
 import { openDatabase, MEMORY_DB, resolveDbPath } from './db/database.js'
 import { DiaryEngine } from './diary/engine.js'
 import { createProactiveText } from './inject/proactive.js'
-import { formatDate, renderStablePrefix } from './inject/stable-prefix.js'
+import { formatDate, renderAnchorLines, renderStablePrefix } from './inject/stable-prefix.js'
 import { SessionRecorder } from './session/recorder.js'
-import { anchorsInWindow } from './store/anchor-store.js'
-import { refreshRelationStage } from './store/relation.js'
+import { anchorsInWindow, markAnchorFired } from './store/anchor-store.js'
+import { sessionSubject } from './store/message-store.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
 import { createConsolidateTool } from './tools/diary-consolidate.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
@@ -51,7 +51,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.7.0'
+const VERSION = '0.8.0'
 
 /**
  * Optional diary trace, enabled by `diaryDebug`. It sits next to the database
@@ -148,7 +148,6 @@ function setup(ctx: Context, config: MnemoConfig): void {
       engine.noteActivity(session.id)
     } else if (event.type === 'turn/end') {
       if (event.data.reason.kind === 'completed') engine.noteTurnEnd(session.id)
-      refreshRelationStage(db, session.id)
     }
   })
 
@@ -209,6 +208,24 @@ function setup(ctx: Context, config: MnemoConfig): void {
       order: 40,
       interpolate: false,
       text: () => proactive(agent.session),
+    })
+    // Group chats get their own anchors here; the global stable section only
+    // knows the local person's dates.
+    agent.ctx.systemPrompt.context({
+      name: 'mnemo:anchors',
+      order: 35,
+      interpolate: false,
+      text: () => {
+        const subject = sessionSubject(db, agent.session.id)
+        if (subject.kind !== 'group') return ''
+        const today = formatDate(new Date())
+        const due = anchorsInWindow(db, subject, today, config.anchorWindowDays).filter(
+          (anchor) => anchor.lastFiredOn !== today && anchor.handledAt === null,
+        )
+        if (due.length === 0) return ''
+        for (const anchor of due) markAnchorFired(db, anchor.id, today)
+        return renderAnchorLines(due, today)
+      },
     })
   })
 

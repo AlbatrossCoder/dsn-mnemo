@@ -17,6 +17,8 @@ export interface DiaryDecision {
   readonly tags: readonly string[]
   /** Short-lived memory points distilled alongside the diary. */
   readonly points: readonly string[]
+  /** `secret` is a hard filter for group contexts; null means scene default. */
+  readonly sensitivity: 'public' | 'private' | 'secret' | null
 }
 
 export interface JudgeInput {
@@ -51,6 +53,7 @@ export function buildJudgePrompt(input: JudgeInput): string {
     'EMOTION: <0-1 的小数>',
     'TAGS: <逗号分隔的 1-3 个标签>',
     'POINTS: <0-3 条短期记忆点，用「；」分隔，每条不超过 40 字；没有就写 NONE>',
+    'SENSITIVITY: <public|private|secret；默认按场景，明确是秘密才写 secret>',
     '',
     '<日记正文>',
     '',
@@ -103,14 +106,20 @@ export function parseDiaryResponse(text: string): DiaryDecision | null {
         .filter((point) => point.length > 0 && !/^NONE$/i.test(point))
         .slice(0, 3)
 
+  const sensitivityRaw = (/SENSITIVITY\s*:\s*(public|private|secret)/i.exec(trimmed)?.[1] ?? '').toLowerCase()
+  const sensitivity =
+    sensitivityRaw === 'public' || sensitivityRaw === 'private' || sensitivityRaw === 'secret'
+      ? (sensitivityRaw as 'public' | 'private' | 'secret')
+      : null
+
   const body = trimmed
     .split('\n')
-    .filter((line) => !/^\s*(IMPORTANCE|EMOTION|TAGS|POINTS)\s*:/i.test(line))
+    .filter((line) => !/^\s*(IMPORTANCE|EMOTION|TAGS|POINTS|SENSITIVITY)\s*:/i.test(line))
     .join('\n')
     .trim()
 
   if (body.length < 8) return null
-  return { content: body, importance, emotion, tags, points }
+  return { content: body, importance, emotion, tags, points, sensitivity }
 }
 
 /** Render the last turns of a session as `role: text` lines. */
