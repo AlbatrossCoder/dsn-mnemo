@@ -11,6 +11,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
 import { segment } from '../db/segment.js'
 import { insertDiary } from '../store/diary-store.js'
+import { sessionSubject } from '../store/message-store.js'
 
 interface ExistingDiary {
   id: number
@@ -22,7 +23,7 @@ export function createDiaryWriteTool(db: DatabaseSync) {
   return defineTool({
     name: 'diary_write',
     description:
-      'Record a diary entry when something is genuinely worth remembering later — something done, decided, planned, promised, or otherwise useful to recall. Do not use it for small talk or routine Q&A. Write 2-3 first-person sentences.',
+      '像写日记一样，把这一轮里值得记住的内容记下来——做了什么、吃了什么、去了哪里、聊了什么、做了什么决定，日常流水账也算；记什么由你判断，没有条数限制。用第一人称写 2-3 句。',
     parameters: {
       content: {
         type: 'string',
@@ -50,13 +51,18 @@ export function createDiaryWriteTool(db: DatabaseSync) {
       },
       render: (_args, value) => [{ type: 'text', text: `diary #${value.id} written` }],
     },
-    async execute(args) {
+    async execute(args, exec) {
       const tags = (args.tags ?? '')
         .split(/[,，、\s]+/)
         .map((tag) => tag.trim())
         .filter((tag) => tag.length > 0)
         .slice(0, 3)
+      const sessionId = exec.agent?.session.id
+      const subject = sessionId === undefined ? undefined : sessionSubject(db, sessionId)
       const id = insertDiary(db, {
+        sessionId: sessionId ?? null,
+        subjectKind: subject?.kind ?? null,
+        subjectId: subject?.id ?? null,
         content: args.content,
         importance: clamp(args.importance),
         emotion: clamp(args.emotion),

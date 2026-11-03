@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { openDatabase } from '../db/database.js'
 import { countDiaries, searchDiaries } from '../store/diary-store.js'
+import { touchSession } from '../store/message-store.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './diary-write.js'
 
 const exec = {} as never
@@ -23,6 +24,26 @@ test('diary_write stores content with clamped scores and tags', async () => {
     assert.equal(row.emotion, 0)
     assert.equal(row.type_tags, '日常,约定')
     assert.equal(countDiaries(db), 1)
+  } finally {
+    db.close()
+  }
+})
+
+test('diary_write attaches the current session subject', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 's-1', 1, { kind: 'dm', audienceId: 'u-42' })
+    const tool = createDiaryWriteTool(db)
+    const exec = { agent: { session: { id: 's-1' } } } as never
+    const result = (await tool.execute({ content: '今天和主人一起看了海' }, exec)) as { id: number }
+    const row = db.prepare('select session_id, subject_kind, subject_id from diaries where id = ?').get(result.id) as {
+      session_id: string
+      subject_kind: string
+      subject_id: string
+    }
+    assert.equal(row.session_id, 's-1')
+    assert.equal(row.subject_kind, 'user')
+    assert.equal(row.subject_id, 'u-42')
   } finally {
     db.close()
   }

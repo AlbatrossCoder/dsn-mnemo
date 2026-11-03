@@ -120,6 +120,9 @@ export class SessionRecorder {
           return
         case 'turn/end':
           touchSession(this.db, session.id, event.data.turn)
+          // The pending-diary hint measures the gap since the last completed
+          // turn; `last_active_at` would be refreshed by the next turn/start.
+          this.db.prepare("update sessions set last_turn_end_at = datetime('now') where id = ?").run(session.id)
           this.turns.delete(session.id)
           return
         case 'user/message':

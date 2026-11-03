@@ -211,8 +211,17 @@ where subject_kind is null;
 update anchors set subject_kind = 'user', subject_id = 'local' where subject_kind is null;
 `
 
+/**
+ * V3: track when the last completed turn ended. The pending-diary hint needs a
+ * timestamp that is *not* refreshed by a new `turn/start`, so it can measure the
+ * quiet gap since the previous reply.
+ */
+const V3 = `
+alter table sessions add column last_turn_end_at text;
+`
+
 /** Every migration in application order. Append only; never edit a released entry. */
-export const MIGRATIONS: readonly string[] = [V1, V2]
+export const MIGRATIONS: readonly string[] = [V1, V2, V3]
 
 /** Highest schema version this build understands. */
 export const SCHEMA_VERSION = MIGRATIONS.length

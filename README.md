@@ -75,9 +75,8 @@
 | 工具 | 参数 | 作用 |
 |---|---|---|
 | `recall` | `query`、`scope: diary \| log`、`limit?` | 深掘记忆：日记走 BM25+重要度+近因，日志走词面检索 |
-| `diary_write` | `content`、`importance?`、`emotion?`、`tags?` | 手动写一篇日记（后台引擎也会自动写） |
+| `diary_write` | `content`、`importance?`、`emotion?`、`tags?` | 把值得记住的内容写进日记（主模型自行调用，无条数上限） |
 | `diary_update` | `id`、`content`、`reason` | 纠正日记；必须给理由，旧正文进 `diary_revisions` |
-| `diary_consolidate` | — | 立即对当前会话跑一次日记判断（不等空闲计时） |
 | `anchor_upsert` | `event_name`、`target_date`、`window_days?`、`tone_hint?`、`repeat?` | 录入锚点（`YYYY-MM-DD`，可声明 daily/weekly/monthly/yearly） |
 | `mnemo_forget` | `subject_kind: user \| group`、`subject_id` | 清空某个人/某个群的全部记忆 |
 | `mnemo_ping` | — | 健康检查：返回版本与数据库路径 |
@@ -87,15 +86,9 @@
 | 键 | 默认值 | 说明 |
 |---|---|---|
 | `dbPath` | `~/.dsh/mnemo/mnemo.db` | SQLite 单文件路径（支持 `~`） |
-| `diaryIdleMinutes` | `20` | 空闲多久后触发日记判断；范围 5–1440 分钟 |
-| `diaryMaxTurns` | `30` | 距上次判断的对话超过多少轮后主动写日记；范围 10–500 |
-| `diaryMaxChars` | `12000` | 距上次判断的对话超过多少字符后主动写日记 |
-| `diaryImmediateOnImportant` | `true` | 出现值得记的信号时立即判断，不等空闲 |
-| `diaryMaxPerSession` | `3` | 每个主体最多保留的日记数 |
-| `diaryProvider` | `deepseek-account` | 判断调用使用的 provider route |
-| `diaryModel` | `deepseek-flash` | 判断调用使用的模型 |
-| `diaryPersonaHint` | `""` | 可选的日记口吻提示 |
-| `diaryDebug` | `false` | 是否把日记引擎的触发与判断过程写入 `diary.log`（诊断用） |
+| `diaryIdleMinutes` | `20` | 距上次回复多久后，在下一条消息提示补写日记；范围 5–1440 分钟 |
+| `diaryMaxTurns` | `30` | 距上次提示超过多少轮后，主动提示补写日记；范围 10–500 |
+| `diaryMaxChars` | `12000` | 距上次提示超过多少字符后，主动提示补写日记 |
 | `storeReasoning` | `false` | 是否把思考过程写进 `raw`；默认丢弃，且从不参与检索 |
 | `anchorWindowDays` | `2` | 锚点前后各几天可触发（单条锚点可覆盖） |
 | `contextRecallLimit` | `20` | 前置浮现最多条数（关联排序，可为 0） |
