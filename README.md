@@ -4,7 +4,7 @@
 
 `dsn-mnemo` 是一个 DeepSeek Harness（DSH）插件。它**不负责人设**——人设由独立的 persona 插件或 preset 提供；它只做一件事：记录发生过什么、把值得留下的沉淀成日记、在合适的时候把对的事浮现进当前对话。
 
-**当前状态**：`0.6.1`，P0–P6 已实现，单测 83/83、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
+**当前状态**：`0.6.2` 已发布到 npm（`npm i dsn-mnemo`），P0–P6 已实现，单测 83/83、Electron 运行时的集成 harness 全绿；已在 Windows 桌面端真实装载（`mnemo_ping`/`recall`/日记链路均验证）。剩余验收项见 [PLAN.md](PLAN.md) §5。
 
 ---
 
