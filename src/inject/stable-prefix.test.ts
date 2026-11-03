@@ -11,6 +11,10 @@ function anchor(overrides: Partial<Anchor>): Anchor {
     windowDays: null,
     toneHint: null,
     lastFiredOn: null,
+    handledAt: null,
+    subjectKind: 'user',
+    subjectId: 'local',
+    repeat: 'none',
     createdAt: '2026-11-01 00:00:00',
     ...overrides,
   }

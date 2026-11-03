@@ -134,10 +134,27 @@ alter table diaries add column subject_kind text;
 alter table diaries add column subject_id text;
 alter table diaries add column visibility text not null default 'private';
 
-alter table anchors add column subject_kind text;
-alter table anchors add column subject_id text;
-alter table anchors add column repeat text not null default 'none';
-alter table anchors add column handled_at text;
+-- Anchors gain ownership, recurrence and state; rebuild the table so the
+-- uniqueness key includes the subject (two people may share a date).
+create table anchors_v2 (
+  id integer primary key autoincrement,
+  event_name text not null,
+  target_date text not null,
+  window_days integer,
+  tone_hint text,
+  last_fired_on text,
+  created_at text not null default (datetime('now')),
+  subject_kind text,
+  subject_id text,
+  repeat text not null default 'none' check (repeat in ('none', 'daily', 'weekly', 'monthly', 'yearly')),
+  handled_at text,
+  unique (subject_kind, subject_id, event_name, target_date)
+);
+insert into anchors_v2(id, event_name, target_date, window_days, tone_hint, last_fired_on, created_at)
+  select id, event_name, target_date, window_days, tone_hint, last_fired_on, created_at from anchors;
+drop table anchors;
+alter table anchors_v2 rename to anchors;
+create index idx_anchors_target on anchors(target_date);
 
 create table memory_points (
   id integer primary key autoincrement,

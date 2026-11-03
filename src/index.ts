@@ -156,10 +156,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
     name: 'mnemo:rules',
     order: 30,
     interpolate: false,
-    text: () => {
-      const today = formatDate(new Date())
-      return renderStablePrefix(anchorsInWindow(db, today, config.anchorWindowDays), today)
-    },
+    text: () => renderStablePrefix(anchorsInWindow(db, { kind: 'user', id: 'local' }, formatDate(new Date()), config.anchorWindowDays), formatDate(new Date())),
   })
 
   const ping = defineTool({

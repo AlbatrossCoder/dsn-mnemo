@@ -6,7 +6,8 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
-import { upsertAnchor } from '../store/anchor-store.js'
+import { upsertAnchor, type Repeat } from '../store/anchor-store.js'
+import { sessionSubject } from '../store/message-store.js'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
@@ -42,6 +43,12 @@ export function createAnchorTool(db: DatabaseSync) {
         type: 'string',
         description: 'Optional note on how to bring it up.',
       },
+      repeat: {
+        type: 'string',
+        enum: ['none', 'daily', 'weekly', 'monthly', 'yearly'],
+        description:
+          'Recurrence stated by the user, e.g. weekly for 每周六开黑. The memory system stores it as given and never infers it.',
+      },
     },
     output: {
       schema: {
@@ -57,15 +64,19 @@ export function createAnchorTool(db: DatabaseSync) {
         { type: 'text', text: `anchor #${value.id}: ${value.target_date} ${value.event_name}` },
       ],
     },
-    async execute(args) {
+    async execute(args, exec) {
       if (!isRealDate(args.target_date)) {
         throw new Error(`target_date must be a real calendar date in YYYY-MM-DD, got: ${args.target_date}`)
       }
+      const sessionId = exec.agent?.session.id
+      const subject = sessionId === undefined ? { kind: 'user' as const, id: 'local' } : sessionSubject(db, sessionId)
       const id = upsertAnchor(db, {
         eventName: args.event_name,
         targetDate: args.target_date,
+        subject,
         windowDays: args.window_days ?? null,
         toneHint: args.tone_hint ?? null,
+        repeat: (args.repeat as Repeat | undefined) ?? 'none',
       })
       return { id, event_name: args.event_name, target_date: args.target_date }
     },

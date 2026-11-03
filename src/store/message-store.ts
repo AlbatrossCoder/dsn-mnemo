@@ -76,6 +76,17 @@ export function touchSession(
   ).run(sessionId, turn, identity.kind, identity.audienceId)
 }
 
+/** Conversation identity carried by a session row. */
+export function sessionSubject(db: DatabaseSync, sessionId: string): { kind: 'user' | 'group'; id: string } {
+  const row = db.prepare('select kind, audience_id from sessions where id = ?').get(sessionId) as
+    | { kind: string; audience_id: string | null }
+    | undefined
+  if (row === undefined || row.audience_id === null || row.audience_id === '') {
+    return { kind: 'user', id: 'local' }
+  }
+  return { kind: row.kind === 'group' ? 'group' : 'user', id: row.audience_id }
+}
+
 /** Insert one message; returns `false` when `(session_id, seq)` already existed. */
 export function insertMessage(db: DatabaseSync, input: MessageInput): boolean {
   const result = db
