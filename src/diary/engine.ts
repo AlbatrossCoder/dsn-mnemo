@@ -8,7 +8,8 @@
  * @module dsn-mnemo/diary/engine
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { insertDiary } from '../store/diary-store.js'
+import { countDiariesFor, insertDiary } from '../store/diary-store.js'
+import { sessionSubject } from '../store/message-store.js'
 import { buildJudgePrompt, parseDiaryResponse } from './judge.js'
 
 /** Injectable timer seam so tests never wait thirty real minutes. */
@@ -92,6 +93,9 @@ export class DiaryEngine {
     if (this.disposed) return
     this.cancel(sessionId)
 
+    // Group chatter that never addressed the assistant is just L0.
+    if (this.isGroupSession(sessionId) && this.recentSinceJudge(sessionId).addressed === 0) return
+
     if (this.options.immediateOnImportant !== false && this.hasImportantCue(sessionId)) {
       this.options.log?.(`trigger=important session=${sessionId}`)
       void this.flush(sessionId)
@@ -122,31 +126,56 @@ export class DiaryEngine {
   }
 
   /** Messages recorded since the last judgement attempt. */
-  private recentSinceJudge(sessionId: string): { turns: number; chars: number; text: string } {
+  private recentSinceJudge(sessionId: string): {
+    turns: number
+    chars: number
+    text: string
+    addressed: number
+    addressedChars: number
+    addressedText: string
+  } {
     const db = this.options.db
     const session = db.prepare('select diary_judged_at from sessions where id = ?').get(sessionId) as
       | { diary_judged_at: string | null }
       | undefined
     const since = session?.diary_judged_at ?? '1970-01-01 00:00:00'
     const rows = db
-      .prepare('select role, content from messages where session_id = ? and created_at > ? order by id')
-      .all(sessionId, since) as unknown as MessageRow[]
+      .prepare('select role, content, addressed from messages where session_id = ? and created_at > ? order by id')
+      .all(sessionId, since) as unknown as Array<MessageRow & { addressed: number }>
+    const addressedRows = rows.filter((row) => row.role === 'user' && row.addressed === 1)
     return {
       turns: rows.filter((row) => row.role === 'user').length,
       chars: rows.reduce((sum, row) => sum + row.content.length, 0),
       text: rows.map((row) => row.content).join('\n'),
+      addressed: addressedRows.length,
+      addressedChars: addressedRows.reduce((sum, row) => sum + row.content.length, 0),
+      addressedText: addressedRows.map((row) => row.content).join('\n'),
     }
   }
 
+  /** Group chats only judge turns that actually addressed the assistant. */
+  private isGroupSession(sessionId: string): boolean {
+    const row = this.options.db.prepare('select kind from sessions where id = ?').get(sessionId) as
+      | { kind: string }
+      | undefined
+    return row?.kind === 'group'
+  }
+
   private hasImportantCue(sessionId: string): boolean {
-    return IMPORTANT_CUES.test(this.recentSinceJudge(sessionId).text)
+    const recent = this.recentSinceJudge(sessionId)
+    // Group chatter is not a reason to write; only addressed turns are.
+    if (this.isGroupSession(sessionId)) return recent.addressed > 0 && IMPORTANT_CUES.test(recent.addressedText)
+    return IMPORTANT_CUES.test(recent.text)
   }
 
   private isLongEnough(sessionId: string): boolean {
-    const { turns, chars } = this.recentSinceJudge(sessionId)
+    const recent = this.recentSinceJudge(sessionId)
     const maxTurns = this.options.maxTurns ?? DEFAULT_MAX_TURNS
     const maxChars = this.options.maxChars ?? DEFAULT_MAX_CHARS
-    return turns >= maxTurns || chars >= maxChars
+    if (this.isGroupSession(sessionId)) {
+      return recent.addressed >= maxTurns || recent.addressedChars >= maxChars
+    }
+    return recent.turns >= maxTurns || recent.chars >= maxChars
   }
 
   /**
@@ -162,15 +191,15 @@ export class DiaryEngine {
     if (this.running.has(sessionId)) return false
     this.running.add(sessionId)
     try {
-      const written = db
-        .prepare('select count(*) as total from diaries where session_id = ?')
-        .get(sessionId) as { total: number } | undefined
-      if ((written?.total ?? 0) >= this.options.maxPerSession) return false
+      const subject = sessionSubject(db, sessionId)
+      if (countDiariesFor(db, subject) >= this.options.maxPerSession) return false
 
       const rows = db
-        .prepare('select role, content from messages where session_id = ? order by seq desc limit ?')
-        .all(sessionId, RECENT_MESSAGE_LIMIT) as unknown as MessageRow[]
+        .prepare('select role, content, addressed from messages where session_id = ? order by seq desc limit ?')
+        .all(sessionId, RECENT_MESSAGE_LIMIT) as unknown as Array<MessageRow & { addressed: number }>
       if (rows.length < 2) return false
+      // A group diary needs something that actually addressed the assistant.
+      if (subject.kind === 'group' && !rows.some((row) => row.role === 'user' && row.addressed === 1)) return false
 
       const transcript = rows
         .reverse()
@@ -191,6 +220,9 @@ export class DiaryEngine {
 
       insertDiary(db, {
         sessionId,
+        subjectKind: subject.kind,
+        subjectId: subject.id,
+        visibility: subject.kind === 'group' ? 'public' : 'private',
         content: decision.content,
         importance: decision.importance,
         emotion: decision.emotion,

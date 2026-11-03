@@ -199,12 +199,72 @@ test('NO_DIARY writes nothing', async () => {
   }
 })
 
+test('group chatter alone never arms a diary judgement', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 'g1', 1, { kind: 'group', audienceId: 'grp-1' })
+    insertMessage(db, { sessionId: 'g1', seq: 1, turn: 1, role: 'user', content: '大家在聊周末去哪玩', raw: '{}' })
+    insertMessage(db, { sessionId: 'g1', seq: 2, turn: 1, role: 'assistant', content: '嗯嗯', raw: '{}' })
+    const { scheduler, entries } = makeScheduler()
+    const engine = new DiaryEngine({
+      db,
+      generate: async () => DIARY_REPLY,
+      idleMs: 1000,
+      maxPerSession: 3,
+      scheduler,
+    })
+    engine.noteTurnEnd('g1')
+    assert.equal(entries.length, 0)
+    assert.equal(engine.pending, 0)
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
+test('an addressed group turn writes a public group diary', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 'g1', 1, { kind: 'group', audienceId: 'grp-1' })
+    insertMessage(db, {
+      sessionId: 'g1',
+      seq: 1,
+      turn: 1,
+      role: 'user',
+      content: '今天是我的生日，大家给我庆祝了',
+      addressed: true,
+      raw: '{}',
+    })
+    insertMessage(db, { sessionId: 'g1', seq: 2, turn: 1, role: 'assistant', content: '生日快乐！今天一定很难忘', raw: '{}' })
+    const { scheduler } = makeScheduler()
+    const engine = new DiaryEngine({
+      db,
+      generate: async () => DIARY_REPLY,
+      idleMs: 1000,
+      maxPerSession: 3,
+      scheduler,
+    })
+    engine.noteTurnEnd('g1')
+    await new Promise((resolve) => setImmediate(resolve))
+    await new Promise((resolve) => setImmediate(resolve))
+    const row = db.prepare('select subject_kind, subject_id, visibility from diaries').get() as {
+      subject_kind: string
+      subject_id: string
+      visibility: string
+    }
+    assert.deepEqual({ ...row }, { subject_kind: 'group', subject_id: 'grp-1', visibility: 'public' })
+    engine.dispose()
+  } finally {
+    db.close()
+  }
+})
+
 test('the per-session cap is enforced', async () => {
   const db = openDatabase(':memory:')
   try {
     seedSession(db, 's1', ['今天聊了记忆系统的设计', '聊到很晚'])
-    insertDiary(db, { sessionId: 's1', content: '已有的一篇' })
-    insertDiary(db, { sessionId: 's1', content: '已有的两篇' })
+    insertDiary(db, { sessionId: 's1', subjectKind: 'user', subjectId: 'local', content: '已有的一篇' })
+    insertDiary(db, { sessionId: 's1', subjectKind: 'user', subjectId: 'local', content: '已有的两篇' })
     const engine = new DiaryEngine({ db, generate: async () => DIARY_REPLY, idleMs: 1000, maxPerSession: 2 })
     assert.equal(await engine.flush('s1'), false)
     assert.equal(countDiaries(db), 2)
