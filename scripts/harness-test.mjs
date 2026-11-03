@@ -11,6 +11,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
+import LlmRuntime from '@deepseek-ai/dsh-llm'
 import SessionStore from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
@@ -55,12 +56,13 @@ const assistantMessage = {
 const ctx = new Context()
 try {
   await ctx.plugin(SystemPrompt)
+  await ctx.plugin(LlmRuntime)
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(mnemo, { dbPath })
 
   const names = ctx.tools.schemas().map((schema) => schema.name)
-  for (const expected of ['mnemo_ping', 'recall', 'anchor_upsert']) {
+  for (const expected of ['mnemo_ping', 'recall', 'anchor_upsert', 'diary_write', 'diary_update']) {
     assert.ok(names.includes(expected), `${expected} missing from registry: ${names.join(', ')}`)
   }
 

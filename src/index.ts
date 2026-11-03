@@ -4,11 +4,13 @@ import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import z from '@deepseek-ai/schemastery'
 import { openDatabase } from './db/database.js'
+import { DiaryEngine } from './diary/engine.js'
 import { createProactiveText } from './inject/proactive.js'
 import { formatDate, renderStablePrefix } from './inject/stable-prefix.js'
 import { SessionRecorder } from './session/recorder.js'
 import { anchorsInWindow } from './store/anchor-store.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
+import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
 import { createRecallTool } from './tools/recall.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
@@ -16,15 +18,19 @@ export const name = 'mnemo'
 
 /**
  * Services required before `apply` runs. `systemPrompt` owns the cached stable
- * prefix, `sessions` supplies the L0 event stream, `tools` is the registry.
+ * prefix, `sessions` supplies the L0 event stream, `llm` runs the diary
+ * judgement, `tools` is the registry.
  */
-export const inject = ['tools', 'sessions', 'systemPrompt']
+export const inject = ['tools', 'sessions', 'systemPrompt', 'llm']
 
 /** User-facing configuration (mirrors DESIGN.md §8). */
 export const Config = z.object({
   dbPath: z.string().default('~/.dsh/mnemo/mnemo.db'),
   diaryIdleMinutes: z.natural().default(30),
   diaryMaxPerSession: z.natural().default(3),
+  diaryProvider: z.string().default('deepseek-account'),
+  diaryModel: z.string().default('deepseek-flash'),
+  diaryPersonaHint: z.string().default(''),
   anchorWindowDays: z.natural().default(2),
   contextRecallLimit: z.natural().default(3),
   recallDiaryLimit: z.natural().default(5),
@@ -33,7 +39,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.4.0'
+const VERSION = '0.5.0'
 
 /**
  * Mount the memory runtime.
@@ -46,12 +52,43 @@ export function apply(ctx: Context, config: MnemoConfig) {
   const db = openDatabase(config.dbPath)
   const recorder = new SessionRecorder(db)
 
+  const engine = new DiaryEngine({
+    db,
+    idleMs: config.diaryIdleMinutes * 60_000,
+    maxPerSession: config.diaryMaxPerSession,
+    personaHint: config.diaryPersonaHint,
+    generate: async (prompt) => {
+      const stream = ctx.llm.stream({
+        provider: config.diaryProvider,
+        model: config.diaryModel,
+        maxTokens: 220,
+        temperature: 0.4,
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
+      })
+      let text = ''
+      for await (const chunk of stream) {
+        if (chunk.type === 'text-delta') {
+          text += chunk.text
+        } else if (chunk.type === 'finish' && chunk.reason.kind !== 'stop') {
+          break
+        }
+      }
+      return text
+    },
+  })
+
   ctx.effect(() => () => {
+    engine.dispose()
     db.close()
   })
 
   ctx.on('session/event', (session, event: SessionEvent) => {
     recorder.handle(session, event)
+    if (event.type === 'turn/start') {
+      engine.noteActivity(session.id)
+    } else if (event.type === 'turn/end' && event.data.reason.kind === 'completed') {
+      engine.noteTurnEnd(session.id)
+    }
   })
 
   // Stable prefix: rules + anchors inside today's window. Everything here is
@@ -96,6 +133,8 @@ export function apply(ctx: Context, config: MnemoConfig) {
     }),
   )
   ctx.tools.register(createAnchorTool(db))
+  ctx.tools.register(createDiaryWriteTool(db))
+  ctx.tools.register(createDiaryUpdateTool(db))
 
   // Dynamic context: one contribution per live agent, so the text can be
   // derived from that agent's own latest human message. It is replaced every
@@ -109,4 +148,7 @@ export function apply(ctx: Context, config: MnemoConfig) {
       text: () => proactive(agent.session),
     })
   })
+
+  // Sessions that went quiet while the process was down still deserve a diary.
+  void engine.catchUp()
 }

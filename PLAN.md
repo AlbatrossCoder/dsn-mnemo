@@ -261,7 +261,16 @@ for await (const chunk of ctx.llm.stream({
 | P2 | ✅ | `session/event` → L0 落库、`recall` 双 scope 已实现；`scripts/harness-test.mjs` 用**真实 SessionStore** 驱动事件，L0 能落库并被 `recall` 命中；单测 29/29。桌面端需重启后才加载 0.2.0 |
 | P3 | ✅ | `systemPrompt.section('mnemo:rules', order 30)` 稳定前缀 + `anchors` 日期窗口 + `anchor_upsert` 工具；harness 用真实 `systemPrompt.assemble()` 验证「同日两次结果字节一致」「锚点写入后出现」；单测 42/42。桌面端需重启后才加载 0.3.0 |
 | P4 | ✅ | 触发规则（时间指代/情绪词）→ 日记检索 → 每 agent 的 `systemPrompt.context('mnemo:recall')`；harness 通过 `agent/created` 驱动，组装结果里出现浮现内容且同一轮内字节稳定；单测 51/51 |
-| P5–P6 | ⬜ | — |
+| P5 | ✅ | 日记引擎：`turn/end(completed)` → 空闲计时 → 单次轻量判断 → 写入；`diary_write` / `diary_update`（严格理由 + `diary_revisions` 备份）；启动 `catchUp()` 补判。单测 70/70。真机 30 分钟静置与真实模型调用待重启后验收 |
+| P6 | ⬜ | — |
+
+实现备注（P5 期间确认）：
+
+- 计时器用进程内 `setTimeout`（`timer` 服务不在 `inject` 里，避免多一个硬依赖），`dispose()` 统一清理；进程被杀靠 `sessions.last_active_at` + 启动 `catchUp()` 补判（只补 30 分钟内到 30 天之间的会话）。
+- 判断调用输出用文本头（`IMPORTANCE` / `EMOTION` / `TAGS` + 正文）而不是 JSON：解析失败一律不写，杜绝坏数据。
+- 真机默认走 `deepseek-account` / `deepseek-flash`，可用 `diaryProvider` / `diaryModel` 覆盖；无头模式因账号鉴权拿不到同一条路，所以日记链路的真实验收只能在桌面端做。
+- `diary_update` 强制要求 `reason`（≥4 字）与存在的行，先把旧正文写进 `diary_revisions` 再改写，FTS 由 `content_seg` 更新触发器跟随。
+
 
 实现备注（P1 期间确认）：
 

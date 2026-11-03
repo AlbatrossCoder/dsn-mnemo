@@ -1,0 +1,128 @@
+/**
+ * Manual diary tools.
+ *
+ * `diary_write` lets the model keep something deliberately; `diary_update` is
+ * the only way an existing diary may change, and it always stores the previous
+ * text plus the stated reason first.
+ *
+ * @module dsn-mnemo/tools/diary-write
+ */
+import { defineTool } from '@deepseek-ai/dsh-tools'
+import type { DatabaseSync } from 'node:sqlite'
+import { segment } from '../db/segment.js'
+import { insertDiary } from '../store/diary-store.js'
+
+interface ExistingDiary {
+  id: number
+  content: string
+}
+
+/** Build the registry-ready `diary_write` tool bound to one database. */
+export function createDiaryWriteTool(db: DatabaseSync) {
+  return defineTool({
+    name: 'diary_write',
+    description:
+      'Record a diary entry when something is genuinely worth remembering later: a real event, a shift in mood, a promise, or a moment that matters to the relationship. Do not use it for small talk or routine Q&A. Write 2-3 first-person sentences.',
+    parameters: {
+      content: {
+        type: 'string',
+        description: 'The diary body, first person, 2-3 sentences.',
+        required: true,
+      },
+      importance: {
+        type: 'number',
+        description: 'How important this is, 0-1. Defaults to 0.5.',
+      },
+      emotion: {
+        type: 'number',
+        description: 'Emotional intensity, 0-1. Defaults to 0.5.',
+      },
+      tags: {
+        type: 'string',
+        description: 'Comma-separated tags, e.g. 日常,约定.',
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: { id: { type: 'number' } },
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{ type: 'text', text: `diary #${value.id} written` }],
+    },
+    async execute(args) {
+      const tags = (args.tags ?? '')
+        .split(/[,，、\s]+/)
+        .map((tag) => tag.trim())
+        .filter((tag) => tag.length > 0)
+        .slice(0, 3)
+      const id = insertDiary(db, {
+        content: args.content,
+        importance: clamp(args.importance),
+        emotion: clamp(args.emotion),
+        typeTags: tags,
+      })
+      return { id }
+    },
+  })
+}
+
+/** Build the registry-ready `diary_update` tool bound to one database. */
+export function createDiaryUpdateTool(db: DatabaseSync) {
+  return defineTool({
+    name: 'diary_update',
+    description:
+      'Correct an existing diary. Only use this when the user explicitly corrects a fact, or when a recorded anchor contradicts the diary. Always state the reason; the previous text is backed up automatically.',
+    parameters: {
+      id: {
+        type: 'integer',
+        description: 'Diary id to rewrite.',
+        required: true,
+      },
+      content: {
+        type: 'string',
+        description: 'The corrected diary body.',
+        required: true,
+      },
+      reason: {
+        type: 'string',
+        description: 'Why the stored text is wrong; required.',
+        required: true,
+      },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        properties: { id: { type: 'number' }, revision: { type: 'number' } },
+        additionalProperties: false,
+      },
+      render: (_args, value) => [{ type: 'text', text: `diary #${value.id} updated (revision ${value.revision})` }],
+    },
+    async execute(args) {
+      const reason = args.reason.trim()
+      if (reason.length < 4) throw new Error('reason must explain the correction (at least 4 characters)')
+      const content = args.content.trim()
+      if (content.length < 4) throw new Error('content is too short to be a diary')
+
+      const existing = db.prepare('select id, content from diaries where id = ?').get(args.id) as
+        | ExistingDiary
+        | undefined
+      if (existing === undefined) throw new Error(`diary ${args.id} not found`)
+
+      const revision = db
+        .prepare('insert into diary_revisions(diary_id, content, reason) values (?, ?, ?)')
+        .run(existing.id, existing.content, reason)
+      db.prepare("update diaries set content = ?, content_seg = ?, updated_at = datetime('now') where id = ?").run(
+        content,
+        segment(content),
+        existing.id,
+      )
+      return { id: existing.id, revision: Number(revision.lastInsertRowid) }
+    },
+  })
+}
+
+function clamp(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0.5
+  return Math.min(1, Math.max(0, value))
+}
