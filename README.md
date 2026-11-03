@@ -137,6 +137,8 @@ score ≥ 20  → close
 
 DSH 的「插件市场」不是上传中心，而是**索引驱动**的：DSH 自身不预置任何索引源，用户要在「插件 → 发现 → 添加索引源」里填一个索引 URL，市场再按索引安装。
 
+完整步骤（推送、npm 发布、索引托管、版本升级）见 [docs/publishing.md](docs/publishing.md)。仓库里已经生成好一份 [market-index.json](market-index.json)，托管后把它的 HTTPS 地址给用户即可。
+
 这条链路要求三样东西，本仓库都已就绪：
 
 1. **可发布的包**：`package.json` 已声明
