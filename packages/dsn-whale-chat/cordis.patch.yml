@@ -1,0 +1,8 @@
+# dsn-whale-chat bundle patch.
+#
+# Installed as a DSH bundle, this layer inserts the QQ chat plugin into every
+# base-backed profile. The row name is the package itself, so the launcher's
+# runtime resolution finds the installed copy.
+- insert:
+    - id: dsn-whale-chat
+      name: "dsn-whale-chat"
