@@ -20,8 +20,9 @@ test('only a too-long reply is split, at 20 (group) / 30 (private)', () => {
   assert.ok(dm.every((chunk) => chunk.length <= 30))
 })
 
-test('blank lines are hard boundaries', () => {
-  assert.deepEqual(splitReply('第一句。\n\n第二句。', 'group', options), ['第一句。', '第二句。'])
+test('every newline is a message boundary the model chose', () => {
+  assert.deepEqual(splitReply('第一句。\n第二句。', 'group', options), ['第一句。', '第二句。'])
+  assert.deepEqual(splitReply('我\n不\n爱\n你！', 'dm', options), ['我', '不', '爱', '你！'])
 })
 
 test('【长】 sends the whole answer as one message, no char limit', () => {

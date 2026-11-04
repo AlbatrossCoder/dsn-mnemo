@@ -1,6 +1,6 @@
 {
   "name": "dsn-whale-chat",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Whale-girl QQ chat plugin for DeepSeek Harness: OneBot channel + two personas + rate control.",
   "license": "Apache-2.0",
   "type": "module",

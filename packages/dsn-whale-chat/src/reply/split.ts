@@ -25,7 +25,9 @@ export function splitReply(text: string, kind: 'group' | 'dm', options: ReplySpl
 
   const max = kind === 'group' ? options.groupMaxChars : options.privateMaxChars
   const chunks: string[] = []
-  for (const paragraph of trimmed.split(/\n{2,}/)) {
+  // Every newline is a message boundary the model chose; the char cap only
+  // guards a single over-long line.
+  for (const paragraph of trimmed.split(/\n/)) {
     const clean = paragraph.trim()
     if (clean.length === 0) continue
     if (clean.length <= max) {
