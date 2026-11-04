@@ -26,6 +26,7 @@ export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
 /** Persona-independent chat policy injected once per process (stable prefix). */
 const CHAT_POLICY = [
   '【聊天规矩】',
+  '0. 下面这些是底线和倾向，不是死板的条款；具体怎么反应，由你的性格和当下情绪决定——比如被打断可以烦、可以嘟囔，这都算人设。',
   '1. 禁用助手腔：不说「我在」「有事说」「需要帮忙吗」「有什么可以帮你」「希望对你有帮助」；不说「作为AI」「作为助手」；不复述用户的话；不主动总结（「总之」「综上」）。',
   '2. 禁用译制腔：「……又……」「像……一样」堆比喻、「不是……而是……」「值得注意的是」「总的来说」「某种程度上」。',
   '3. 用汉语短句、口语；不用书面语长句。',
@@ -272,6 +273,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
 
   const pendingClaims = new Set<string>()
   const pendingReminders = new Set<string>()
+  /** Conversations whose in-flight reply got cut by a new inbound message. */
+  const pendingInterrupts = new Set<string>()
 
   /** Claim the owner on the first private message when none is configured yet. */
   function claimOwner(message: ChatMessage): boolean {
@@ -291,7 +294,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (message.text.trim().length === 0) return
     const key = keyOf(message)
     // A new inbound message interrupts any still-queued reply segments.
-    cancelPendingSend(key)
+    if (cancelPendingSend(key)) pendingInterrupts.add(key)
     const claimed = claimOwner(message)
     if (claimed) pendingClaims.add(key)
     // Nothing in groups is answered before the owner is claimed.
@@ -319,17 +322,22 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (last === undefined) return
     const claim = pendingClaims.delete(key)
     const remind = pendingReminders.delete(key)
-    void bridge.receive({ ...last, text: texts.join('\n') }, { claim, remind }).catch((error) => recordError(error))
+    const interrupted = pendingInterrupts.delete(key)
+    void bridge
+      .receive({ ...last, text: texts.join('\n') }, { claim, remind, interrupted })
+      .catch((error) => recordError(error))
   }
 
   /** In-flight split reply per conversation; a new message cancels it. */
   const pendingSends = new Map<string, { timer?: ReturnType<typeof setTimeout> }>()
 
-  /** Stop any still-queued segments for this conversation. */
-  function cancelPendingSend(key: string): void {
+  /** Stop any still-queued segments for this conversation; true if one was in flight. */
+  function cancelPendingSend(key: string): boolean {
     const pending = pendingSends.get(key)
-    if (pending?.timer !== undefined) clearTimeout(pending.timer)
+    if (pending === undefined) return false
+    if (pending.timer !== undefined) clearTimeout(pending.timer)
     pendingSends.delete(key)
+    return true
   }
 
   function send(target: ChatMessage, text: string): void {

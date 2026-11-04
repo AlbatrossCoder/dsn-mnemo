@@ -84,3 +84,8 @@ export function toRemindAddressMessage(message: ChatMessage) {
     '（你还不知道该怎么称呼 ta。顺口再问一次怎么叫 ta；ta 还是不说，就叫「主人」。）',
   )
 }
+
+/** The user cut off a still-sending reply; the model may react in character. */
+export function toInterruptedMessage(message: ChatMessage) {
+  return toNudgeMessage(message, '（你上一条还没说完，对方就插话了。怎么反应由你。）（你刚被打断了。）')
+}

@@ -7,6 +7,7 @@ import {
   conversationKey,
   toClaimMessage,
   toInterjectMessage,
+  toInterruptedMessage,
   toProactiveMessage,
   toRemindAddressMessage,
   toUserMessage,
@@ -50,12 +51,16 @@ export class ChatBridge {
     })
   }
 
-  async receive(message: ChatMessage, options: { claim?: boolean; remind?: boolean } = {}): Promise<void> {
+  async receive(
+    message: ChatMessage,
+    options: { claim?: boolean; remind?: boolean; interrupted?: boolean } = {},
+  ): Promise<void> {
     const key = conversationKey(message)
     const agent = await this.agentFor(key)
     this.conversations.set(agent.session.id, message)
     if (options.claim === true) agent.inject(toClaimMessage(message))
     else if (options.remind === true) agent.inject(toRemindAddressMessage(message))
+    if (options.interrupted === true) agent.inject(toInterruptedMessage(message))
     agent.followup(toUserMessage(message))
   }
 
