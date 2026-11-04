@@ -5,8 +5,7 @@
 > 定位：QQ 通道 + 双人格 + 聊天频率控制。记忆不在这里做，全部交给 `dsn-mnemo`。
 >
 > 人格文档（`docs/persona/`）：
-> - [小鲸鱼（萝莉）](persona/little-whale.md) · [小鲸鱼隐藏（恶趣味 / 贴吧喷子）](persona/little-whale-hidden.md)
-> - [大鲸鱼（御姐）](persona/big-whale.md) · [大鲸鱼隐藏「女王」](persona/big-whale-hidden.md)
+> - [小鲸鱼（萝莉）](persona/little-whale.md) · [小鲸鱼隐藏（恶趣味 / 贴吧喷子 / 女王）](persona/little-whale-hidden.md)
 
 ## 0. 设计原则
 
@@ -20,7 +19,7 @@
 
 | 项 | 默认 | 说明 |
 |---|---|---|
-| `name` | 小鲸鱼 / 大鲸鱼 | 显示名，用户可改成任意（如「鲸鱼娘」「阿鲸」） |
+| `name` | 小鲸鱼 | 显示名，用户可改成任意（如「鲸鱼娘」「阿鲸」） |
 | `aliases` | 小鲸鱼、鲸鱼、鲸鲸、鱼鱼、鲸鱼娘 | 能接受的称呼，用户可追加（**待实现**） |
 | `disliked` | 大肥鱼、小肥鱼、喂 | 听到会抗议，但不生气、不失礼（**待实现**） |
 | `addressUser` | 哥哥（小）/ 你（大） | 怎么称呼用户，可配置（已实现） |
@@ -49,7 +48,7 @@
 |---|---|---|---|
 | 小鲸鱼 | 恶趣味 | `toggles.mischief` | 暴躁、粗口、低俗、口头禅 |
 | 小鲸鱼 | 贴吧喷子 | `toggles.troll` | 抬杠、阴阳怪气、贴吧梗（不骂脏话） |
-| 大鲸鱼 | 女王 | `toggles.queen` | 反差、黄腔、荤段子、情欲向 |
+| 小鲸鱼 | 女王 | `toggles.queen` | 反差、黄腔、荤段子、情欲向 |
 
 **注入规则（关键）**：
 - 基础卡：当前人格激活时**总是注入**；
@@ -111,7 +110,7 @@ provider: ''                      # 可选，空 = 用 DSH 默认路由
 model: ''
 
 persona:
-  active: little-whale            # little-whale | big-whale
+  active: little-whale            # 内置：little-whale（自定义人格可追加）
   addressUser: 主人               # 对主人的称呼（没认主前无意义，默认 主人）
   custom: ''                      # 用户追加设定，优先级最高
   aliases: [小鲸鱼, 鲸鱼, 鲸鲸, 鱼鱼, 鲸鱼娘]   # 群聊里这样叫她，也算在叫她
@@ -132,7 +131,7 @@ personas:
 
 toggles:                          # 四个开关默认全关
   mischief: false                 # 小鲸鱼恶趣味
-  queen: false                    # 大鲸鱼女王
+  queen: false                    # 小鲸鱼女王气场
   kaomoji: false                  # 颜文字（emoji 默认可用）
   troll: false                    # 小鲸鱼贴吧喷子
 
@@ -186,7 +185,7 @@ schedule:
 | **新增人格** | 手动加进 `BUILT_IN_PERSONAS` | 源码 |
 | **开关**（恶趣味/女王/颜文字/贴吧喷子） | 配置默认 + 可对话切换（`persona_toggle`） | 运行时状态，覆盖配置 |
 | **名字 / 怎么称呼你 / `custom`** | 对话（模型调 `persona_set`） | 运行时状态，覆盖配置 |
-| **切换人格**（小鲸鱼 ↔ 大鲸鱼） | 对话/工具 `switch_persona` | 运行时状态 |
+| **切换人格**（内置小鲸鱼，或已追加的自定义人格） | 对话/工具 `switch_persona` | 运行时状态 |
 
 - `persona_set` / `persona_toggle` / `switch_persona` 只在用户明确要求时触发，不许模型自作主张。
 - 核心人格（traits/quirks）不开放运行时修改。
@@ -226,14 +225,14 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 
 ## 10. 已定
 
-1. 称呼不统一：小鲸鱼叫「哥哥」、大鲸鱼叫「小家伙」，各有性格。
+1. 称呼统一：小鲸鱼叫「主人」（可被认主流程改），不再有第二人格的「小家伙」。
 2. 不自动切换人格，默认只手动 `switch_persona`。
 3. `activeHours` 先不做正式配置。
 4. 新增人格只改源码（`personas.ts`）。
 5. 私聊无冷却、有去抖；群聊默认 @ 触发 + 合并 + 冷却。
 6. 闲时主动默认关；随机插话设计但默认关。
 7. 四个开关（恶趣味 / 女王 / 颜文字 / 贴吧喷子）**默认全关**；隐藏卡关闭时不注入。
-8. 溺爱属于大鲸鱼正常人格；反差/黄腔/情欲向属于女王开关。
+8. 反差 / 黄腔 / 情欲向属于女王开关，归小鲸鱼的隐藏层。
 
 ## 11. 已完成 / 未做
 

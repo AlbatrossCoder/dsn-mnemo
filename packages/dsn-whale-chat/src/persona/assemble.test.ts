@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { assemblePersona } from './assemble.js'
-import { BIG_WHALE, LITTLE_WHALE } from './personas.js'
+import { LITTLE_WHALE } from './personas.js'
 
 const off = { mischief: false, queen: false, kaomoji: false, troll: false }
 
@@ -34,11 +34,9 @@ test('troll turns on the little whale 贴吧喷子 layer', () => {
   assert.match(text, /就这？/)
 })
 
-test('queen only turns on the big whale hidden layer', () => {
-  const big = assemblePersona(BIG_WHALE, { toggles: { ...off, queen: true } })
-  assert.match(big, /女王/)
-  const little = assemblePersona(LITTLE_WHALE, { toggles: { ...off, queen: true } })
-  assert.doesNotMatch(little, /女王/)
+test('queen turns on the little whale queen layer', () => {
+  const text = assemblePersona(LITTLE_WHALE, { toggles: { ...off, queen: true } })
+  assert.match(text, /女王/)
 })
 
 test('kaomoji off appends a no-kaomoji rule; on does not', () => {
