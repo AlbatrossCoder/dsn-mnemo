@@ -49,7 +49,7 @@ export class ChatBridge {
 
   constructor(private readonly options: BridgeOptions) {
     this.maxPending = options.maxPendingTurns ?? 5
-    this.maxBuffered = options.maxBufferedMessages ?? 10
+    this.maxBuffered = options.maxBufferedMessages ?? 5
     options.ctx.on('session/event', (session, event) => {
       const target = this.conversations.get(session.id)
       if (target === undefined) return
@@ -127,14 +127,18 @@ export class ChatBridge {
     this.buffered.set(key, buffered)
   }
 
-  /** After a turn ends, merge whatever was held into one chained turn. */
+  /** After a turn ends, merge the held messages into chained turns — same speaker only. */
   private async drain(key: string): Promise<void> {
     const buffered = this.buffered.get(key)
     if (buffered === undefined || buffered.length === 0) return
     if (!this.admit(key)) return
-    this.buffered.delete(key)
-    const last = buffered[buffered.length - 1] as ChatMessage
-    const text = buffered.map((message) => message.text).join('\n')
+    const first = buffered[0] as ChatMessage
+    let end = 1
+    while (end < buffered.length && (buffered[end] as ChatMessage).userId === first.userId) end += 1
+    const group = buffered.splice(0, end)
+    if (buffered.length === 0) this.buffered.delete(key)
+    const last = group[group.length - 1] as ChatMessage
+    const text = group.map((message) => message.text).join('\n')
     const agent = await this.agentFor(key)
     this.conversations.set(agent.session.id, last)
     if (this.overwhelmed.delete(key)) agent.inject(toOverwhelmedMessage(last))
