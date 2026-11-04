@@ -65,7 +65,7 @@
 |---|---|---|
 | `whale:persona` | 身份 / 说话样子 / 具体细节 / 反应 / 语气样本 / 隐藏层 | 全局稳定前缀 |
 | `whale:policy` | 禁 AI 腔、不解释系统、事实优先、报错、分条 | 全局稳定前缀 |
-| `whale:channel` | 群聊 ≤20 字 / 私聊 ≤30 字 / 长文本例外 | 每 agent（按会话类型） |
+| `whale:channel` | 群聊超 20 字才拆 / 私聊超 30 字才拆 / 长文本不分条 | 每 agent（按会话类型） |
 
 **人设卡结构**（`personas.ts`）：
 
@@ -153,12 +153,12 @@ groupRate:                        # 群聊：合并 + 冷却 + 限额
   maxPerMinute: 3
   maxPerHour: 60
 
-replySplit:                       # 短句分条发（默认开）
+replySplit:                       # 过长才分条（默认开；短回复就一条）
   enabled: true
-  groupMaxChars: 20               # 群聊单条上限
-  privateMaxChars: 30             # 私聊单条上限
-  longFormMaxChars: 800           # 【长】/ 代码块的长文本上限
+  groupMaxChars: 20               # 群聊单条上限（超了才拆）
+  privateMaxChars: 30             # 私聊单条上限（超了才拆）
   delayMs: 1500                   # 分条之间的延迟
+  # 【长】/ 代码块 = 特殊场景：整条发，不分段、不限字数
 
 proactive:                        # 闲时主动发言（默认开，风险项），20~120 分钟随机触发
   private: { enabled: true, idleMinMinutes: 20, idleMaxMinutes: 120, maxPerDay: 1 }
@@ -196,7 +196,7 @@ QQ ──OneBot WS──▶ dsn-whale-chat
                      ├─ persona    基础卡 + 隐藏卡按开关拼装、稳定前缀注入
                      │              persona_set / switch_persona / persona_toggle
                      ├─ rate       触发 → 去抖合并 → 冷却/限流
-                     ├─ reply      按 20/30 字拆条，1.5s 间隔发送（【长】/代码块例外）
+                     ├─ reply      内容超 20/30 字才拆条，1.5s 间隔发送（【长】/代码块整条发）
                      ├─ proactive  闲时唤醒（可沉默）+ 免打扰 + 每日上限
                      ├─ interject  群聊随机插话（实验性）
                      └─ bridge     把 { kind:'qq', userId, groupId, mentioned } 放进 source
@@ -208,7 +208,7 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 | `channel` | OneBot 11 WS 连接、指数退避重连、`message_id` 去重、@ 判定、发送与限流 |
 | `persona` | 按开关拼装基础卡+隐藏卡、注入稳定前缀、三个 persona 工具、运行时状态持久化 |
 | `rate` | 去抖（debounce）、合并（batch）、冷却（cooldown）、每分钟/每小时上限 |
-| `reply` | 短句分条（群聊 20 / 私聊 30 字）、长文本例外、1.5s 间隔发送 |
+| `reply` | 内容过长才分条（群聊 20 / 私聊 30 字上限）、长文本整条发、1.5s 间隔 |
 | `proactive` | 空闲计时、免打扰、每日上限、`SILENT` 可沉默 |
 | `interject` | 概率 + 最小间隔 + 每小时上限的随机插话闸门 |
 | `bridge` | 构造 `UserMessage.source`（身份）、`agent.followup()`、监听 `assistant/message` 回发 |

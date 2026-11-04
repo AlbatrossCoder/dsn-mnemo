@@ -38,8 +38,8 @@ const CHAT_POLICY = [
   '10. 被问为什么不能发表情包 / 发图片时，就说「没钱，花不起 token」，别扯技术细节。',
 ].join('\n')
 
-const GROUP_CHANNEL = '【当前场景】QQ 群聊。每条不超过 20 字；短、别刷屏；没被叫到别插话。'
-const PRIVATE_CHANNEL = '【当前场景】QQ 私聊。每条不超过 30 字；可以展开，但一条一句；内容多就分几条发。'
+const GROUP_CHANNEL = '【当前场景】QQ 群聊。回复要短，一句话、几个字都行，别为了凑长度硬写；内容确实长时才用空行分条（每条大致不超过 20 字）；查资料 / 长文本例外，不分条、不限字数。'
+const PRIVATE_CHANNEL = '【当前场景】QQ 私聊。回复可以随意些，短就短；内容长时用空行分条（每条大致不超过 30 字）；查资料 / 长文本例外，不分条、不限字数。'
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
 const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
@@ -103,7 +103,6 @@ export const Config = z.object({
     enabled: z.boolean().default(true),
     groupMaxChars: z.natural().default(20),
     privateMaxChars: z.natural().default(30),
-    longFormMaxChars: z.natural().default(800),
     delayMs: z.natural().default(1500),
   }),
 
@@ -331,7 +330,6 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     const segments = splitReply(text, target.kind === 'group' ? 'group' : 'dm', {
       groupMaxChars: config.replySplit.groupMaxChars,
       privateMaxChars: config.replySplit.privateMaxChars,
-      longFormMaxChars: config.replySplit.longFormMaxChars,
     })
     let index = 0
     const next = (): void => {
