@@ -50,7 +50,7 @@ export function assemblePersona(persona: Persona, options: AssembleOptions): str
   }
   const address = options.addressUser?.trim()
   if (address !== undefined && address.length > 0) {
-    parts.push(`称呼：叫用户「${address}」。`)
+    parts.push(`称呼：对主人叫「${address}」；对其他人用「你」或昵称，不要用主人称呼。`)
   }
   if (!options.toggles.kaomoji) {
     parts.push('不要使用颜文字和 emoji。')

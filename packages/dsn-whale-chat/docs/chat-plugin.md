@@ -112,10 +112,16 @@ model: ''
 
 persona:
   active: little-whale            # little-whale | big-whale
-  addressUser: 哥哥
+  addressUser: 主人               # 对主人的称呼（没认主前无意义，默认 主人）
   custom: ''                      # 用户追加设定，优先级最高
   aliases: [小鲸鱼, 鲸鱼, 鲸鲸, 鱼鱼, 鲸鱼娘]   # 群聊里这样叫她，也算在叫她
   disliked: [大肥鱼, 小肥鱼, 喂]                # 这样叫会被小抗议一下
+
+owner:                            # 唯一的最大权限用户（认主）
+  userId: ''                      # 空 = 未认主；第一条私聊自动认主（claim=true 时）
+  nickname: ''                    # 展示用，可空
+  role: 主人                      # 主人 / 家长 / 自定义
+  claim: true                     # 允许首条私聊自动认主；认主后锁死
 
 # 追加自定义人格（同 id 覆盖内置）
 personas:

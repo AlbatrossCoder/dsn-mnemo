@@ -52,6 +52,6 @@ test('address and custom are appended last', () => {
     addressUser: '主人',
     custom: '说话简短点。',
   })
-  assert.match(text, /叫用户「主人」/)
+  assert.match(text, /对主人叫「主人」/)
   assert.ok(text.trimEnd().endsWith('说话简短点。'))
 })

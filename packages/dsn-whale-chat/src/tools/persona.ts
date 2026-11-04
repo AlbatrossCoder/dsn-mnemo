@@ -3,7 +3,7 @@
  * flip the hidden-content toggles. They only fire when the user explicitly
  * asks; the model must not rewrite its own core persona.
  */
-import { defineTool } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { Persona } from '../persona/personas.js'
 import type { StateStore } from '../persona/state.js'
 
@@ -32,6 +32,27 @@ function describe(state: { activeId?: string; name?: string; addressUser?: strin
   return `persona: ${state.activeId ?? '-'} (${state.name ?? '-'}, 叫用户「${state.addressUser ?? '-'}」)`
 }
 
+/**
+ * Only the claimed owner may change the persona. Reads the calling agent's last
+ * human message source (the bridge tags each message with `kind: 'qq'`).
+ */
+function ownerAllowed(store: StateStore, exec: ToolRunContext): boolean {
+  const ownerId = store.get().ownerId
+  if (ownerId.length === 0) return true // not claimed yet: no restriction
+  const messages = exec.agent?.session.deriveMessages() ?? []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const source = messages[index]?.source
+    if (source !== undefined && source.kind === 'qq' && typeof source.userId === 'string') {
+      return source.userId === ownerId
+    }
+  }
+  return false
+}
+
+function assertOwner(store: StateStore, exec: ToolRunContext): void {
+  if (!ownerAllowed(store, exec)) throw new Error('只有主人能改我的设定。')
+}
+
 export function createPersonaSetTool(store: StateStore) {
   return defineTool({
     name: 'persona_set',
@@ -47,7 +68,8 @@ export function createPersonaSetTool(store: StateStore) {
       schema: stateSchema,
       render: (_args, value) => [{ type: 'text', text: describe(value) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      assertOwner(store, exec)
       if (args.reset === true) return store.reset()
       const patch: { name?: string; addressUser?: string; custom?: string } = {}
       if (typeof args.name === 'string' && args.name.trim().length > 0) patch.name = args.name.trim()
@@ -71,7 +93,8 @@ export function createPersonaSwitchTool(store: StateStore, personas: readonly Pe
       schema: stateSchema,
       render: (_args, value) => [{ type: 'text', text: describe(value) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      assertOwner(store, exec)
       const persona = personas.find((candidate) => candidate.id === args.id)
       if (persona === undefined) throw new Error(`unknown persona: ${args.id}`)
       return store.update({ activeId: persona.id, name: persona.name })
@@ -99,7 +122,8 @@ export function createPersonaToggleTool(store: StateStore) {
         },
       ],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      assertOwner(store, exec)
       const toggles: { mischief?: boolean; queen?: boolean; kaomoji?: boolean; troll?: boolean } = {}
       if (typeof args.mischief === 'boolean') toggles.mischief = args.mischief
       if (typeof args.queen === 'boolean') toggles.queen = args.queen

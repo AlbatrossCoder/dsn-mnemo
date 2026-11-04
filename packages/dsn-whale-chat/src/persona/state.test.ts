@@ -10,6 +10,7 @@ const defaults = {
   name: '小鲸鱼',
   addressUser: '哥哥',
   custom: '',
+  ownerId: '',
   toggles: { mischief: false, queen: false, kaomoji: false, troll: false },
 }
 

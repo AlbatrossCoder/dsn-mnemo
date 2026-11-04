@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ChatMessage } from '../channel/types.js'
-import { conversationKey, toInterjectMessage, toProactiveMessage, toUserMessage } from './message.js'
+import { conversationKey, toClaimMessage, toInterjectMessage, toProactiveMessage, toUserMessage } from './message.js'
 import { assistantText } from './reply.js'
 
 export interface BridgeOptions {
@@ -43,10 +43,11 @@ export class ChatBridge {
     })
   }
 
-  async receive(message: ChatMessage): Promise<void> {
+  async receive(message: ChatMessage, options: { claim?: boolean } = {}): Promise<void> {
     const key = conversationKey(message)
     const agent = await this.agentFor(key)
     this.conversations.set(agent.session.id, message)
+    if (options.claim === true) agent.inject(toClaimMessage(message))
     agent.followup(toUserMessage(message))
   }
 

@@ -12,6 +12,7 @@ declare module '@deepseek-ai/dsh-llm/message' {
       readonly kind: 'qq'
       readonly userId: string
       readonly groupId?: string
+      readonly nickname?: string
       readonly mentioned?: boolean
     }
     /** A synthetic "you may speak" nudge; never a chat-log message. */
@@ -36,6 +37,7 @@ export function toUserMessage(message: ChatMessage) {
       kind: 'qq',
       userId: message.userId,
       ...(message.groupId === null ? {} : { groupId: message.groupId }),
+      ...(message.nickname === null ? {} : { nickname: message.nickname }),
       mentioned: message.mentioned,
     },
   })
@@ -65,4 +67,12 @@ export function toProactiveMessage(message: ChatMessage) {
 
 export function toInterjectMessage(message: ChatMessage, text: string) {
   return toNudgeMessage(message, `群里刚才有人说：「${text}」。你可以接一句，或回 SILENT。`)
+}
+
+/** One-time nudge right after the bot claims its owner on the first DM. */
+export function toClaimMessage(message: ChatMessage) {
+  return toNudgeMessage(
+    message,
+    '（你刚认下这个人当主人。先问一句「我该怎么叫你」，没明确说就默认叫「主人」。）',
+  )
 }
