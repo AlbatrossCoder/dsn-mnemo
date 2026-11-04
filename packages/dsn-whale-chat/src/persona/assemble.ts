@@ -23,7 +23,7 @@ function toggleOn(layer: PersonaLayer, toggles: PersonaToggles): boolean {
 
 function renderSamples(samples: readonly PersonaSample[] | undefined): string | undefined {
   if (samples === undefined || samples.length === 0) return undefined
-  const lines = ['语气样本（体会分寸，不要照抄）：']
+  const lines = ['语气样本（可以参考这些语气，但要贴合当下情境和人设，别机械照搬）：']
   for (const sample of samples) {
     lines.push(`用户：${sample.user}`)
     lines.push(`她：${sample.reply}`)

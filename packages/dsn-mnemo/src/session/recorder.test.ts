@@ -83,6 +83,27 @@ test('qq group messages record speaker, audience, and addressed', () => {
   }
 })
 
+test('qq speaker tags are stripped from the recorded text', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    recorder.handle(session, makeEvent('turn/start', 0, { turn: 1 }))
+    recorder.handle(
+      session,
+      makeEvent('user/message', 1, {
+        id: 'm1',
+        role: 'user',
+        content: [{ type: 'text', text: '[小明/10001] 在吗\n[小红/10002] 你好' }],
+        source: { kind: 'qq', userId: '10002', groupId: '20002', mentioned: true },
+      }),
+    )
+    const row = db.prepare('select content from messages').get() as { content: string }
+    assert.equal(row.content, '在吗\n你好')
+  } finally {
+    db.close()
+  }
+})
+
 test('qq private messages become a dm subject', () => {
   const db = openDatabase(':memory:')
   try {

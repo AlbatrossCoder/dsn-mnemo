@@ -80,6 +80,11 @@ function identityOf(message: MessageShape): MessageIdentity {
   return { kind: 'dm', audienceId: 'local', speakerId: null, addressed: true }
 }
 
+/** Remove the chat channel's per-line `[昵称/QQ号]` speaker tag before store. */
+function stripSpeakerTag(text: string): string {
+  return text.replace(/^\[[^\]\n]*\/\d+\]\s*/gm, '')
+}
+
 /** Options for what L0 keeps beyond the searchable text. */
 export interface RecorderOptions {
   /**
@@ -144,6 +149,8 @@ export class SessionRecorder {
           const content = flattenContent(Array.isArray(message.content) ? message.content : [])
           // A pure tool-call step has no visible text; nothing was said.
           if (content.length === 0) return
+          // Chat channels prefix each line with `[昵称/QQ号]`; memory keeps the text only.
+          const recorded = message.source?.kind === 'qq' ? stripSpeakerTag(content) : content
           const stored = this.storeReasoning ? message : withoutReasoning(message)
           insertMessage(this.db, {
             sessionId: session.id,
@@ -153,7 +160,7 @@ export class SessionRecorder {
             messageId: typeof message.id === 'string' ? message.id : null,
             speakerId: identity?.speakerId ?? null,
             addressed: identity?.addressed === true,
-            content,
+            content: recorded,
             raw: JSON.stringify(stored),
           })
           return

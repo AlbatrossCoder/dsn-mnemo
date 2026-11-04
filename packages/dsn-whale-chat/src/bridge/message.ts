@@ -73,6 +73,6 @@ export function toInterjectMessage(message: ChatMessage, text: string) {
 export function toClaimMessage(message: ChatMessage) {
   return toNudgeMessage(
     message,
-    '（你刚认下这个人当主人。先问一句「我该怎么叫你」，没明确说就默认叫「主人」。）',
+    '（你刚认下这个人当主人。用你自己的方式问一句 ta 想被怎么称呼；没明确说就默认叫「主人」。）',
   )
 }
