@@ -14,6 +14,12 @@ declare module '@deepseek-ai/dsh-llm/message' {
       readonly groupId?: string
       readonly mentioned?: boolean
     }
+    /** A synthetic "you may speak" nudge; never a chat-log message. */
+    'qq-proactive': {
+      readonly kind: 'qq-proactive'
+      readonly userId: string
+      readonly groupId?: string
+    }
   }
 }
 
@@ -31,6 +37,26 @@ export function toUserMessage(message: ChatMessage) {
       userId: message.userId,
       ...(message.groupId === null ? {} : { groupId: message.groupId }),
       mentioned: message.mentioned,
+    },
+  })
+}
+
+/**
+ * Build the idle "you may speak" nudge. The model answers with a message, or
+ * `SILENT` to stay quiet; the source kind keeps it out of the chat log.
+ */
+export function toProactiveMessage(message: ChatMessage) {
+  return createUserMessage({
+    content: [
+      {
+        type: 'text',
+        text: '（现在没有新消息。你可以主动说一句：如果想起了什么、有没聊完的话题、或到日子的锚点，就说；没有想说的就只回复 SILENT。）',
+      },
+    ],
+    source: {
+      kind: 'qq-proactive',
+      userId: message.userId,
+      ...(message.groupId === null ? {} : { groupId: message.groupId }),
     },
   })
 }

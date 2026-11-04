@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ChatMessage } from '../channel/types.js'
-import { conversationKey, toUserMessage } from './message.js'
+import { conversationKey, toProactiveMessage, toUserMessage } from './message.js'
 import { assistantText } from './reply.js'
 
 export interface BridgeOptions {
@@ -33,6 +33,8 @@ export class ChatBridge {
       if (target === undefined) return
       const text = assistantText(event.data.message.content)
       if (text.length === 0) return
+      // The idle nudge can be declined; "SILENT" is never sent to QQ.
+      if (text.trim().toUpperCase() === 'SILENT') return
       try {
         this.options.reply(target, text)
       } catch (error) {
@@ -46,6 +48,14 @@ export class ChatBridge {
     const agent = await this.agentFor(key)
     this.conversations.set(agent.session.id, message)
     agent.followup(toUserMessage(message))
+  }
+
+  /** Wake the agent for an idle proactive turn; it may answer or stay silent. */
+  async proactive(target: ChatMessage): Promise<void> {
+    const key = conversationKey(target)
+    const agent = await this.agentFor(key)
+    this.conversations.set(agent.session.id, target)
+    agent.followup(toProactiveMessage(target))
   }
 
   private async agentFor(key: string): Promise<Agent> {

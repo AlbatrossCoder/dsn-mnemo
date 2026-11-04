@@ -9,6 +9,7 @@ import type { ChatMessage } from './channel/types.js'
 import { assemblePersona } from './persona/assemble.js'
 import { BUILT_IN_PERSONAS, findPersona } from './persona/personas.js'
 import { createStateStore } from './persona/state.js'
+import { ProactiveScheduler } from './proactive/proactive.js'
 import { RateController } from './rate/rate.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
 
@@ -37,6 +38,12 @@ export const Config = z.object({
   groupCooldownMs: z.natural().default(30_000),
   groupMaxPerMinute: z.natural().default(3),
   groupMaxPerHour: z.natural().default(30),
+  proactivePrivate: z.boolean().default(false),
+  proactiveGroup: z.boolean().default(false),
+  proactiveIdleMinutes: z.natural().default(30),
+  proactiveMaxPerDay: z.natural().default(1),
+  quietStart: z.natural().default(23),
+  quietEnd: z.natural().default(8),
 })
 
 export type WhaleChatConfig = Schemastery.TypeT<typeof Config>
@@ -98,6 +105,18 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     onFlush: (key, texts) => flush(key, texts),
   })
 
+  const proactive = new ProactiveScheduler({
+    policy: {
+      idleMs: config.proactiveIdleMinutes * 60_000,
+      maxPerDay: config.proactiveMaxPerDay,
+      quietHours: [config.quietStart, config.quietEnd],
+    },
+    onFire: (key) => {
+      const last = lastByKey.get(key)
+      if (last !== undefined) void bridge.proactive(last)
+    },
+  })
+
   function keyOf(message: ChatMessage): string {
     return message.kind === 'group' ? `group:${message.groupId}` : `user:${message.userId}`
   }
@@ -109,6 +128,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     lastByKey.set(key, message)
     const rate = message.kind === 'group' ? groupRate : privateRate
     rate.offer(key, message.text)
+    const proactiveEnabled = message.kind === 'group' ? config.proactiveGroup : config.proactivePrivate
+    if (proactiveEnabled) proactive.noteActivity(key)
   }
 
   function flush(key: string, texts: readonly string[]): void {
@@ -126,6 +147,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     client.stop()
     privateRate.cancelAll()
     groupRate.cancelAll()
+    proactive.cancelAll()
   })
 
   // Stable prefix: the assembled persona. It changes only when the config, a
