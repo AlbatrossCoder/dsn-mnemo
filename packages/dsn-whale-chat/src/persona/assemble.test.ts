@@ -5,12 +5,12 @@ import { LITTLE_WHALE } from './personas.js'
 
 const off = { mischief: false, queen: false, kaomoji: false, troll: false }
 
-test('base card renders with style samples', () => {
+test('base card renders the character background', () => {
   const text = assemblePersona(LITTLE_WHALE, { toggles: off })
   assert.match(text, /小鲸鱼崽/)
-  assert.match(text, /语气样本/)
-  assert.match(text, /用户：在吗？/)
-  assert.match(text, /她：在的在的！/)
+  assert.match(text, /数据海/)
+  assert.match(text, /怕黑/)
+  assert.doesNotMatch(text, /语气样本/)
 })
 
 test('hidden layers are omitted when their toggles are off', () => {
@@ -22,16 +22,14 @@ test('hidden layers are omitted when their toggles are off', () => {
 
 test('mischief turns on only the little whale mischief layer', () => {
   const text = assemblePersona(LITTLE_WHALE, { toggles: { ...off, mischief: true } })
-  assert.match(text, /暴躁/)
+  assert.match(text, /暴躁鲸鱼/)
   assert.doesNotMatch(text, /贴吧/)
-  assert.match(text, /你懂个屁/)
 })
 
 test('troll turns on the little whale 贴吧喷子 layer', () => {
   const text = assemblePersona(LITTLE_WHALE, { toggles: { ...off, troll: true } })
   assert.match(text, /贴吧/)
-  assert.doesNotMatch(text, /暴躁/)
-  assert.match(text, /就这？/)
+  assert.doesNotMatch(text, /被惹到会突然暴躁/)
 })
 
 test('queen turns on the little whale 小黄鱼 layer', () => {
