@@ -92,3 +92,8 @@ export function toRemindAddressMessage(message: ChatMessage) {
 export function toInterruptedMessage(message: ChatMessage) {
   return toNudgeMessage(message, '（你上一条还没说完，对方又开口了。接下来怎么接，按你自己的性子来。）')
 }
+
+/** The user flooded the conversation; a situation note, not a style rule. */
+export function toOverwhelmedMessage(message: ChatMessage) {
+  return toNudgeMessage(message, '（对方刚才一下发了好多条，你没一条条细看。）')
+}

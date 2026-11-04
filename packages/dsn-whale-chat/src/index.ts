@@ -113,6 +113,10 @@ export const Config = z.object({
     jitterMs: z.natural().default(800),
   }),
 
+  queue: z.object({
+    maxPendingTurns: z.natural().default(5),
+  }),
+
   proactive: z.object({
     private: z.object({
       enabled: z.boolean().default(true),
@@ -195,6 +199,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     onError: (error) => recordError(error),
     provider: config.provider.length === 0 ? undefined : config.provider,
     model: config.model.length === 0 ? undefined : config.model,
+    maxPendingTurns: config.queue.maxPendingTurns,
   })
 
   const lastByKey = new Map<string, ChatMessage>()
