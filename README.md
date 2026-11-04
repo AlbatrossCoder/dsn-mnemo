@@ -7,7 +7,7 @@
 | 插件 | 一句话 | 状态 |
 |---|---|---|
 | [dsn-mnemo](packages/dsn-mnemo) | 跨会话记忆：原文 / 日记 / 锚点 | `0.7.2`（已发布 npm） |
-| [dsn-whale-chat](packages/dsn-whale-chat) | 鲸鱼娘 QQ 聊天：通道 + 双人格 + 频率控制 | `0.1.7`（已发布 npm） |
+| [dsn-whale-chat](packages/dsn-whale-chat) | 鲸鱼娘 QQ 聊天：通道 + 双人格 + 频率控制 | `0.1.8`（已发布 npm） |
 
 两个插件解耦：聊天插件负责把 QQ 消息送进 DSH 并带上身份，记忆插件负责记住，互不依赖。
 
