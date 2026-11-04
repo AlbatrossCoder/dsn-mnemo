@@ -61,3 +61,16 @@ test('ignores non-message events and malformed frames', () => {
   assert.equal(parseEvent('not json'), null)
   assert.equal(parseEvent(JSON.stringify({ post_type: 'message', message_type: 'group', user_id: 1, message_id: 2 })), null)
 })
+
+test('a bare QQ face becomes a placeholder the bot can react to', () => {
+  const message = parseEvent(groupEvent({ message: [{ type: 'face', data: { id: '13' } }] }))
+  assert.ok(message)
+  assert.equal(message.text, '[表情]')
+})
+
+test('sticker (mface) and image segments are not turned into text', () => {
+  const mface = parseEvent(groupEvent({ message: [{ type: 'mface', data: { summary: 'x' } }] }))
+  assert.equal(mface?.text, '')
+  const image = parseEvent(groupEvent({ message: [{ type: 'image', data: { file: 'a.png' } }] }))
+  assert.equal(image?.text, '')
+})

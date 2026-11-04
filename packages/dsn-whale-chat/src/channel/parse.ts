@@ -17,7 +17,13 @@ function textOf(message: readonly OneBotSegment[] | string | undefined): string 
   if (!Array.isArray(message)) return ''
   const parts: string[] = []
   for (const segment of message) {
-    if (segment.type === 'text' && typeof segment.data?.text === 'string') parts.push(segment.data.text)
+    if (segment.type === 'text' && typeof segment.data?.text === 'string') {
+      parts.push(segment.data.text)
+    } else if (segment.type === 'face') {
+      // A bare QQ face is still something the bot can react to; sticker images
+      // (mface/image) stay unsupported for now.
+      parts.push('[表情]')
+    }
   }
   return parts.join('')
 }

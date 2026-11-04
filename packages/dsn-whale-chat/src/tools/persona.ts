@@ -111,7 +111,7 @@ export function createPersonaToggleTool(store: StateStore) {
     parameters: {
       mischief: { type: 'boolean', description: 'Little whale mischief layer.' },
       queen: { type: 'boolean', description: 'Big whale queen layer.' },
-      kaomoji: { type: 'boolean', description: 'Allow kaomoji / emoji.' },
+      kaomoji: { type: 'boolean', description: 'Allow kaomoji / 颜文字 (emoji is always allowed).' },
       troll: { type: 'boolean', description: 'Little whale 贴吧喷子 layer.' },
     },
     output: {
