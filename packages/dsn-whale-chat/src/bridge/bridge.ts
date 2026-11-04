@@ -69,9 +69,13 @@ export class ChatBridge {
   private async agentFor(key: string): Promise<Agent> {
     const existing = this.agents.get(key)
     if (existing !== undefined) return existing
+    // Omit empty fields so the loop resolves its own default route.
+    const agentOptions: { provider?: string; model?: string } = {}
+    if (this.options.provider !== undefined) agentOptions.provider = this.options.provider
+    if (this.options.model !== undefined) agentOptions.model = this.options.model
     const handle = await this.options.ctx.agents.create({
       sessionId: SessionId(`whale-chat:${key}:${randomUUID()}`),
-      agentOptions: { provider: this.options.provider, model: this.options.model },
+      agentOptions,
     })
     this.agents.set(key, handle.agent)
     return handle.agent

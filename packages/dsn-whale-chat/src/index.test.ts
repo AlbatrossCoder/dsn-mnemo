@@ -4,7 +4,7 @@ import { Config, inject, name } from './index.js'
 
 test('plugin exports shape and default config', () => {
   assert.equal(name, 'dsn-whale-chat')
-  assert.deepEqual(inject, ['tools', 'sessions', 'systemPrompt', 'agents'])
+  assert.deepEqual(inject, ['tools', 'sessions', 'systemPrompt', 'agents', 'llm'])
   const parsed = Config({})
   assert.equal(parsed.persona.active, 'little-whale')
   assert.equal(parsed.toggles.mischief, false)

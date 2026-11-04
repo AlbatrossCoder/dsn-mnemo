@@ -19,7 +19,7 @@ import { matchesAny } from './util/text.js'
 export const name = 'dsn-whale-chat'
 
 /** Services required before `apply` runs. */
-export const inject = ['tools', 'sessions', 'systemPrompt', 'agents']
+export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
 const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
@@ -207,7 +207,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
 
   function fireProactive(key: string): void {
     const last = lastByKey.get(key)
-    if (last !== undefined) void bridge.proactive(last)
+    if (last !== undefined) void bridge.proactive(last).catch((error) => recordError(error))
   }
 
   /** Was this group message meant for the bot (by @, name, or keyword)? */
@@ -225,7 +225,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (message.text.trim().length === 0) return
     if (message.kind === 'group' && !groupAddressed(message)) {
       // Group chatter the bot was not addressed in: maybe join in (off by default).
-      if (interject()) void bridge.interject(message, message.text)
+      if (interject()) void bridge.interject(message, message.text).catch((error) => recordError(error))
       return
     }
     const key = keyOf(message)
@@ -240,7 +240,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   function flush(key: string, texts: readonly string[]): void {
     const last = lastByKey.get(key)
     if (last === undefined) return
-    void bridge.receive({ ...last, text: texts.join('\n') })
+    void bridge.receive({ ...last, text: texts.join('\n') }).catch((error) => recordError(error))
   }
 
   function send(target: ChatMessage, text: string): void {
