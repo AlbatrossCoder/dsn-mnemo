@@ -85,7 +85,10 @@ export function toRemindAddressMessage(message: ChatMessage) {
   )
 }
 
-/** The user cut off a still-sending reply; the model may react in character. */
+/**
+ * The user cut off a still-sending reply. Neutral statement only — no
+ * suggested emotion; how she takes it is up to the persona.
+ */
 export function toInterruptedMessage(message: ChatMessage) {
-  return toNudgeMessage(message, '（你上一条还没说完，对方就插话了。怎么反应由你。）（你刚被打断了。）')
+  return toNudgeMessage(message, '（你上一条还没说完，对方又开口了。接下来怎么接，按你自己的性子来。）')
 }
