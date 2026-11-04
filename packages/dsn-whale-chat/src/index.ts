@@ -98,13 +98,13 @@ export const Config = z.object({
 
   proactive: z.object({
     private: z.object({
-      enabled: z.boolean().default(false),
+      enabled: z.boolean().default(true),
       idleMinMinutes: z.natural().default(15),
       idleMaxMinutes: z.natural().default(30),
       maxPerDay: z.natural().default(1),
     }),
     group: z.object({
-      enabled: z.boolean().default(false),
+      enabled: z.boolean().default(true),
       idleMinMinutes: z.natural().default(15),
       idleMaxMinutes: z.natural().default(30),
       maxPerDay: z.natural().default(1),
@@ -112,7 +112,7 @@ export const Config = z.object({
   }),
 
   randomInterject: z.object({
-    enabled: z.boolean().default(false),
+    enabled: z.boolean().default(true),
     probability: z.number().default(0.05),
     minMessagesBetween: z.natural().default(20),
     windowMinutes: z.natural().default(10),
