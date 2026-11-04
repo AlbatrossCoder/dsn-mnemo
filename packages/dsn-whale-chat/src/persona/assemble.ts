@@ -1,4 +1,4 @@
-import type { Persona, PersonaToggles } from './personas.js'
+import type { PersonaLayer, Persona, PersonaToggles } from './personas.js'
 
 export interface AssembleOptions {
   /** Replaces the persona's default address when the user set one. */
@@ -8,23 +8,30 @@ export interface AssembleOptions {
   readonly toggles: PersonaToggles
 }
 
-function hiddenEnabled(id: string, toggles: PersonaToggles): boolean {
-  if (id === 'little-whale') return toggles.mischief
-  if (id === 'big-whale') return toggles.queen
-  return false
+function toggleOn(layer: PersonaLayer, toggles: PersonaToggles): boolean {
+  switch (layer.id) {
+    case 'mischief':
+      return toggles.mischief
+    case 'queen':
+      return toggles.queen
+    case 'troll':
+      return toggles.troll
+    default:
+      return false
+  }
 }
 
 /**
  * Assemble the injected persona text.
  *
- * Order: base → hidden (only when its toggle is on) → address override →
- * no-kaomoji rule → user custom. The hidden layer is *omitted entirely* when
- * its toggle is off, so it never reaches the model (saves tokens, leaks nothing).
+ * Order: base → each enabled hidden layer (in listed order) → address override
+ * → no-kaomoji rule → user custom. A disabled hidden layer is omitted entirely,
+ * so it never reaches the model (saves tokens, leaks nothing).
  */
 export function assemblePersona(persona: Persona, options: AssembleOptions): string {
   const parts: string[] = [persona.base]
-  if (hiddenEnabled(persona.id, options.toggles) && persona.hidden !== undefined) {
-    parts.push(persona.hidden)
+  for (const layer of persona.hidden ?? []) {
+    if (toggleOn(layer, options.toggles)) parts.push(layer.text)
   }
   const address = options.addressUser?.trim()
   if (address !== undefined && address.length > 0) {

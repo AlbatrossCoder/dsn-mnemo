@@ -20,6 +20,7 @@ const stateSchema = {
         mischief: { type: 'boolean' },
         queen: { type: 'boolean' },
         kaomoji: { type: 'boolean' },
+        troll: { type: 'boolean' },
       },
       additionalProperties: false,
     },
@@ -87,21 +88,23 @@ export function createPersonaToggleTool(store: StateStore) {
       mischief: { type: 'boolean', description: 'Little whale mischief layer.' },
       queen: { type: 'boolean', description: 'Big whale queen layer.' },
       kaomoji: { type: 'boolean', description: 'Allow kaomoji / emoji.' },
+      troll: { type: 'boolean', description: 'Little whale 贴吧喷子 layer.' },
     },
     output: {
       schema: stateSchema,
       render: (_args, value) => [
         {
           type: 'text',
-          text: `toggles: mischief=${value.toggles?.mischief ?? false} queen=${value.toggles?.queen ?? false} kaomoji=${value.toggles?.kaomoji ?? false}`,
+          text: `toggles: mischief=${value.toggles?.mischief ?? false} queen=${value.toggles?.queen ?? false} troll=${value.toggles?.troll ?? false} kaomoji=${value.toggles?.kaomoji ?? false}`,
         },
       ],
     },
     async execute(args) {
-      const toggles: { mischief?: boolean; queen?: boolean; kaomoji?: boolean } = {}
+      const toggles: { mischief?: boolean; queen?: boolean; kaomoji?: boolean; troll?: boolean } = {}
       if (typeof args.mischief === 'boolean') toggles.mischief = args.mischief
       if (typeof args.queen === 'boolean') toggles.queen = args.queen
       if (typeof args.kaomoji === 'boolean') toggles.kaomoji = args.kaomoji
+      if (typeof args.troll === 'boolean') toggles.troll = args.troll
       return store.update({ toggles })
     },
   })

@@ -3,18 +3,26 @@ import test from 'node:test'
 import { assemblePersona } from './assemble.js'
 import { BIG_WHALE, LITTLE_WHALE } from './personas.js'
 
-const off = { mischief: false, queen: false, kaomoji: false }
+const off = { mischief: false, queen: false, kaomoji: false, troll: false }
 
-test('hidden layer is omitted when its toggle is off', () => {
+test('hidden layers are omitted when their toggles are off', () => {
   const text = assemblePersona(LITTLE_WHALE, { toggles: off })
   assert.match(text, /小鲸鱼崽/)
   assert.doesNotMatch(text, /恶趣味/)
   assert.doesNotMatch(text, /脏话/)
+  assert.doesNotMatch(text, /贴吧/)
 })
 
-test('mischief turns on the little whale hidden layer', () => {
+test('mischief turns on only the little whale mischief layer', () => {
   const text = assemblePersona(LITTLE_WHALE, { toggles: { ...off, mischief: true } })
-  assert.match(text, /脏话/)
+  assert.match(text, /暴躁/)
+  assert.doesNotMatch(text, /贴吧/)
+})
+
+test('troll turns on the little whale 贴吧喷子 layer', () => {
+  const text = assemblePersona(LITTLE_WHALE, { toggles: { ...off, troll: true } })
+  assert.match(text, /贴吧/)
+  assert.doesNotMatch(text, /暴躁/)
 })
 
 test('queen only turns on the big whale hidden layer', () => {

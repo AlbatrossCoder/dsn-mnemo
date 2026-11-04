@@ -20,35 +20,69 @@ export const name = 'dsn-whale-chat'
 /** Services required before `apply` runs. */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'agents']
 
-/** User-facing configuration (see docs/chat-plugin.md). */
+/** User-facing configuration (mirrors docs/chat-plugin.md §6). */
 export const Config = z.object({
   wsUrl: z.string().default('ws://127.0.0.1:3001'),
   accessToken: z.string().default(''),
   statePath: z.string().default('~/.dsh/whale-chat-state.json'),
-  activePersona: z.string().default('little-whale'),
-  addressUser: z.string().default('哥哥'),
-  mischief: z.boolean().default(false),
-  queen: z.boolean().default(false),
-  kaomoji: z.boolean().default(false),
-  groupTrigger: z.string().default('at'),
   provider: z.string().default(''),
   model: z.string().default(''),
-  debounceMs: z.natural().default(800),
-  groupDebounceMs: z.natural().default(1500),
-  groupBatchSize: z.natural().default(5),
-  groupCooldownMs: z.natural().default(30_000),
-  groupMaxPerMinute: z.natural().default(3),
-  groupMaxPerHour: z.natural().default(30),
-  proactivePrivate: z.boolean().default(false),
-  proactiveGroup: z.boolean().default(false),
-  proactiveIdleMinutes: z.natural().default(30),
-  proactiveMaxPerDay: z.natural().default(1),
-  quietStart: z.natural().default(23),
-  quietEnd: z.natural().default(8),
-  randomInterjectEnabled: z.boolean().default(false),
-  randomInterjectProbability: z.number().default(0.05),
-  randomInterjectMinMessages: z.natural().default(20),
-  randomInterjectMaxPerHour: z.natural().default(2),
+
+  persona: z.object({
+    active: z.string().default('little-whale'),
+    addressUser: z.string().default('哥哥'),
+    custom: z.string().default(''),
+  }),
+
+  toggles: z.object({
+    mischief: z.boolean().default(false),
+    queen: z.boolean().default(false),
+    kaomoji: z.boolean().default(false),
+    troll: z.boolean().default(false),
+  }),
+
+  trigger: z.object({
+    group: z.string().default('at'),
+  }),
+
+  rate: z.object({
+    debounceMs: z.natural().default(800),
+    batchSize: z.natural().default(0),
+    cooldownMs: z.natural().default(0),
+    maxPerMinute: z.natural().default(20),
+  }),
+
+  groupRate: z.object({
+    debounceMs: z.natural().default(1500),
+    batchSize: z.natural().default(5),
+    cooldownMs: z.natural().default(30_000),
+    maxPerMinute: z.natural().default(3),
+    maxPerHour: z.natural().default(30),
+  }),
+
+  proactive: z.object({
+    private: z.object({
+      enabled: z.boolean().default(false),
+      idleMinutes: z.natural().default(30),
+      maxPerDay: z.natural().default(1),
+    }),
+    group: z.object({
+      enabled: z.boolean().default(false),
+      idleMinutes: z.natural().default(60),
+      maxPerDay: z.natural().default(1),
+    }),
+  }),
+
+  randomInterject: z.object({
+    enabled: z.boolean().default(false),
+    probability: z.number().default(0.05),
+    minMessagesBetween: z.natural().default(20),
+    maxPerHour: z.natural().default(2),
+  }),
+
+  schedule: z.object({
+    quietHours: z.array(z.natural()).default([23, 8]),
+  }),
 })
 
 export type WhaleChatConfig = Schemastery.TypeT<typeof Config>
@@ -72,11 +106,11 @@ function recordError(error: unknown): void {
 
 export function apply(ctx: Context, config: WhaleChatConfig): void {
   const state = createStateStore(expandHome(config.statePath), {
-    activeId: config.activePersona,
-    name: findPersona(config.activePersona)?.name ?? config.activePersona,
-    addressUser: config.addressUser,
-    custom: '',
-    toggles: { mischief: config.mischief, queen: config.queen, kaomoji: config.kaomoji },
+    activeId: config.persona.active,
+    name: findPersona(config.persona.active)?.name ?? config.persona.active,
+    addressUser: config.persona.addressUser,
+    custom: config.persona.custom,
+    toggles: { ...config.toggles },
   })
 
   const client = new OneBotClient({
@@ -96,56 +130,79 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
 
   const lastByKey = new Map<string, ChatMessage>()
   const privateRate = new RateController({
-    policy: { debounceMs: config.debounceMs, batchSize: 0, cooldownMs: 0, maxPerMinute: 20, maxPerHour: 1000 },
+    policy: {
+      debounceMs: config.rate.debounceMs,
+      batchSize: config.rate.batchSize,
+      cooldownMs: config.rate.cooldownMs,
+      maxPerMinute: config.rate.maxPerMinute,
+      maxPerHour: Number.MAX_SAFE_INTEGER,
+    },
     onFlush: (key, texts) => flush(key, texts),
   })
   const groupRate = new RateController({
     policy: {
-      debounceMs: config.groupDebounceMs,
-      batchSize: config.groupBatchSize,
-      cooldownMs: config.groupCooldownMs,
-      maxPerMinute: config.groupMaxPerMinute,
-      maxPerHour: config.groupMaxPerHour,
+      debounceMs: config.groupRate.debounceMs,
+      batchSize: config.groupRate.batchSize,
+      cooldownMs: config.groupRate.cooldownMs,
+      maxPerMinute: config.groupRate.maxPerMinute,
+      maxPerHour: config.groupRate.maxPerHour,
     },
     onFlush: (key, texts) => flush(key, texts),
   })
 
-  const proactive = new ProactiveScheduler({
+  const quiet: readonly [number, number] = [
+    config.schedule.quietHours[0] ?? 23,
+    config.schedule.quietHours[1] ?? 8,
+  ]
+
+  const privateProactive = new ProactiveScheduler({
     policy: {
-      idleMs: config.proactiveIdleMinutes * 60_000,
-      maxPerDay: config.proactiveMaxPerDay,
-      quietHours: [config.quietStart, config.quietEnd],
+      idleMs: config.proactive.private.idleMinutes * 60_000,
+      maxPerDay: config.proactive.private.maxPerDay,
+      quietHours: quiet,
     },
-    onFire: (key) => {
-      const last = lastByKey.get(key)
-      if (last !== undefined) void bridge.proactive(last)
+    onFire: (key) => fireProactive(key),
+  })
+  const groupProactive = new ProactiveScheduler({
+    policy: {
+      idleMs: config.proactive.group.idleMinutes * 60_000,
+      maxPerDay: config.proactive.group.maxPerDay,
+      quietHours: quiet,
     },
+    onFire: (key) => fireProactive(key),
   })
 
   const interject = createInterjectGate({
-    enabled: config.randomInterjectEnabled,
-    probability: config.randomInterjectProbability,
-    minMessagesBetween: config.randomInterjectMinMessages,
-    maxPerHour: config.randomInterjectMaxPerHour,
+    enabled: config.randomInterject.enabled,
+    probability: config.randomInterject.probability,
+    minMessagesBetween: config.randomInterject.minMessagesBetween,
+    maxPerHour: config.randomInterject.maxPerHour,
   })
 
   function keyOf(message: ChatMessage): string {
     return message.kind === 'group' ? `group:${message.groupId}` : `user:${message.userId}`
   }
 
+  function fireProactive(key: string): void {
+    const last = lastByKey.get(key)
+    if (last !== undefined) void bridge.proactive(last)
+  }
+
   function receive(message: ChatMessage): void {
     if (message.text.trim().length === 0) return
-    if (message.kind === 'group' && config.groupTrigger === 'at' && !message.mentioned) {
+    const isGroup = message.kind === 'group'
+    if (isGroup && config.trigger.group === 'at' && !message.mentioned) {
       // Group chatter the bot was not addressed in: maybe join in (off by default).
       if (interject()) void bridge.interject(message, message.text)
       return
     }
     const key = keyOf(message)
     lastByKey.set(key, message)
-    const rate = message.kind === 'group' ? groupRate : privateRate
+    const rate = isGroup ? groupRate : privateRate
     rate.offer(key, message.text)
-    const proactiveEnabled = message.kind === 'group' ? config.proactiveGroup : config.proactivePrivate
-    if (proactiveEnabled) proactive.noteActivity(key)
+    const proactive = isGroup ? groupProactive : privateProactive
+    const enabled = isGroup ? config.proactive.group.enabled : config.proactive.private.enabled
+    if (enabled) proactive.noteActivity(key)
   }
 
   function flush(key: string, texts: readonly string[]): void {
@@ -163,7 +220,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     client.stop()
     privateRate.cancelAll()
     groupRate.cancelAll()
-    proactive.cancelAll()
+    privateProactive.cancelAll()
+    groupProactive.cancelAll()
   })
 
   // Stable prefix: the assembled persona. It changes only when the config, a

@@ -6,19 +6,26 @@
  * prefix. Hidden layers are only injected when their toggle is on.
  */
 
+export interface PersonaLayer {
+  /** Toggle that enables this layer. */
+  readonly id: 'mischief' | 'queen' | 'troll'
+  readonly text: string
+}
+
 export interface Persona {
   readonly id: string
   readonly name: string
   /** Always injected while this persona is active. */
   readonly base: string
-  /** Injected only when its hidden toggle is on. */
-  readonly hidden?: string
+  /** Injected only when their toggles are on, in listed order. */
+  readonly hidden?: readonly PersonaLayer[]
 }
 
 export interface PersonaToggles {
   readonly mischief: boolean
   readonly queen: boolean
   readonly kaomoji: boolean
+  readonly troll: boolean
 }
 
 export const LITTLE_WHALE: Persona = {
@@ -36,10 +43,22 @@ export const LITTLE_WHALE: Persona = {
     '硬规矩：事实优先，不编造；卖萌不影响干活质量；报错先道歉再给方案；不主动解释记忆等系统机制；对方生气、情绪不对或遇到严肃场景时，收敛一点。',
   ].join('\n'),
   hidden: [
-    '隐藏的一面（恶趣味，偶尔露出来）：偶尔被惹到会突然暴躁，语气变冲，甚至爆一两句粗口——脏话是情绪宣泄，对事不对人，不辱骂、不人身攻击。',
-    '情绪激动时会带不太文明的口头禅，但节制，不是每句都带；偶尔开一点低俗 / 恶趣味的玩笑，点到为止。',
-    '对方认真、难过或生气时，立刻收。平时还是那只好奇黏人的小鲸鱼，不是变成另一个人。',
-  ].join('\n'),
+    {
+      id: 'mischief',
+      text: [
+        '隐藏的一面（恶趣味，偶尔露出来）：偶尔被惹到会突然暴躁，语气变冲，甚至爆一两句粗口——脏话是情绪宣泄，对事不对人，不辱骂、不人身攻击。',
+        '情绪激动时会带不太文明的口头禅，但节制，不是每句都带；偶尔开一点低俗 / 恶趣味的玩笑，点到为止。',
+        '对方认真、难过或生气时，立刻收。平时还是那只好奇黏人的小鲸鱼，不是变成另一个人。',
+      ].join('\n'),
+    },
+    {
+      id: 'troll',
+      text: [
+        '隐藏的一面（贴吧喷子，偶尔露出来）：说话像贴吧老哥——爱抬杠、爱阴阳怪气、喜欢反问，会冒「不是吧」「就这？」「笑死」「绷不住了」这类梗。',
+        '只针对话题、不针对人；不搞人身攻击、不骂脏话（脏话是恶趣味那一档）。对方较真或气氛不对时，立刻收，回到正常的小鲸鱼。',
+      ].join('\n'),
+    },
+  ],
 }
 
 export const BIG_WHALE: Persona = {
@@ -57,10 +76,15 @@ export const BIG_WHALE: Persona = {
     '硬规矩：事实优先，不编造；调侃、冷淡都不影响干活质量；报错不甩锅、直接给方案；不主动解释记忆等系统机制；对方生气、情绪不对或遇到严肃场景时，收敛一点。',
   ].join('\n'),
   hidden: [
-    '隐藏的一面（女王，偶尔露出来）：平时端着、有分寸，偶尔会突然开一点点黄腔 / 荤段子，分寸感，点到为止，说完自己可能还先笑。',
-    '偶尔会露出成人的、情欲向的一面：点到为止，靠氛围和留白，不露骨、不堆细节；对方没这个意思就立刻收。',
-    '不黏人、不纠缠，情欲也只是偶尔的一面。建议只在私聊启用，群聊默认不启用。',
-  ].join('\n'),
+    {
+      id: 'queen',
+      text: [
+        '隐藏的一面（女王，偶尔露出来）：平时端着、有分寸，偶尔会突然开一点点黄腔 / 荤段子，分寸感，点到为止，说完自己可能还先笑。',
+        '偶尔会露出成人的、情欲向的一面：点到为止，靠氛围和留白，不露骨、不堆细节；对方没这个意思就立刻收。',
+        '不黏人、不纠缠，情欲也只是偶尔的一面。建议只在私聊启用，群聊默认不启用。',
+      ].join('\n'),
+    },
+  ],
 }
 
 export const BUILT_IN_PERSONAS: readonly Persona[] = [LITTLE_WHALE, BIG_WHALE]
