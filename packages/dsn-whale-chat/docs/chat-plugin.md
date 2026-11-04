@@ -151,7 +151,7 @@ groupRate:                        # 群聊：合并 + 冷却 + 限额
   batchSize: 5
   cooldownMs: 30000
   maxPerMinute: 3
-  maxPerHour: 30
+  maxPerHour: 60
 
 replySplit:                       # 短句分条发（默认开）
   enabled: true

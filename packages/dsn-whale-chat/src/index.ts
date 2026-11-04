@@ -95,7 +95,7 @@ export const Config = z.object({
     batchSize: z.natural().default(5),
     cooldownMs: z.natural().default(30_000),
     maxPerMinute: z.natural().default(3),
-    maxPerHour: z.natural().default(30),
+    maxPerHour: z.natural().default(60),
   }),
 
   replySplit: z.object({
