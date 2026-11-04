@@ -1,0 +1,5 @@
+export { OneBotClient, type ClientOptions } from './client.js'
+export { createDedupe } from './dedupe.js'
+export { parseEvent } from './parse.js'
+export { webSocketConnect, type Connect, type Connection, type ConnectHandlers } from './transport.js'
+export type { ChatMessage, ChatNotification, OneBotMessageEvent, OneBotSegment } from './types.js'
