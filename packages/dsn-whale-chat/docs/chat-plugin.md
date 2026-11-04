@@ -112,13 +112,13 @@ trigger:
   keywords: []                    # group=keyword 时，命中这些词也算在叫她
 
 rate:                             # 私聊：无冷却、有去抖
-  debounceMs: 800
+  debounceMs: 3000
   batchSize: 0
   cooldownMs: 0
   maxPerMinute: 20
 
 groupRate:                        # 群聊：合并 + 冷却 + 限额
-  debounceMs: 1500
+  debounceMs: 5000
   batchSize: 5
   cooldownMs: 30000
   maxPerMinute: 3

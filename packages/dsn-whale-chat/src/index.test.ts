@@ -12,5 +12,7 @@ test('plugin exports shape and default config', () => {
   assert.equal(parsed.toggles.kaomoji, false)
   assert.equal(parsed.toggles.troll, false)
   assert.equal(parsed.trigger.group, 'at')
+  assert.equal(parsed.rate.debounceMs, 3000)
+  assert.equal(parsed.groupRate.debounceMs, 5000)
   assert.deepEqual(parsed.schedule.quietHours, [23, 8])
 })

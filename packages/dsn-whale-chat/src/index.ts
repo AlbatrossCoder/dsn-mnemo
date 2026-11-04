@@ -57,14 +57,14 @@ export const Config = z.object({
   }),
 
   rate: z.object({
-    debounceMs: z.natural().default(800),
+    debounceMs: z.natural().default(3000),
     batchSize: z.natural().default(0),
     cooldownMs: z.natural().default(0),
     maxPerMinute: z.natural().default(20),
   }),
 
   groupRate: z.object({
-    debounceMs: z.natural().default(1500),
+    debounceMs: z.natural().default(5000),
     batchSize: z.natural().default(5),
     cooldownMs: z.natural().default(30_000),
     maxPerMinute: z.natural().default(3),
