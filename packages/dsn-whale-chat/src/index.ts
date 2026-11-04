@@ -13,7 +13,7 @@ import { BUILT_IN_PERSONAS, type Persona } from './persona/personas.js'
 import { createStateStore } from './persona/state.js'
 import { ProactiveScheduler } from './proactive/proactive.js'
 import { RateController } from './rate/rate.js'
-import { splitReply } from './reply/split.js'
+import { splitReply, typingDelay } from './reply/split.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
 import { matchesAny } from './util/text.js'
 
@@ -103,7 +103,10 @@ export const Config = z.object({
     enabled: z.boolean().default(true),
     groupMaxChars: z.natural().default(20),
     privateMaxChars: z.natural().default(30),
-    delayMs: z.natural().default(1500),
+    msPerChar: z.natural().default(120),
+    minDelayMs: z.natural().default(400),
+    maxDelayMs: z.natural().default(4000),
+    jitterMs: z.natural().default(800),
   }),
 
   proactive: z.object({
@@ -331,13 +334,22 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       groupMaxChars: config.replySplit.groupMaxChars,
       privateMaxChars: config.replySplit.privateMaxChars,
     })
+    const delayOptions = {
+      msPerChar: config.replySplit.msPerChar,
+      minMs: config.replySplit.minDelayMs,
+      maxMs: config.replySplit.maxDelayMs,
+      jitterMs: config.replySplit.jitterMs,
+    }
     let index = 0
     const next = (): void => {
       if (index >= segments.length) return
       const segment = segments[index] as string
       index += 1
       deliver(segment)
-      if (index < segments.length) setTimeout(next, config.replySplit.delayMs)
+      if (index < segments.length) {
+        const following = segments[index] as string
+        setTimeout(next, typingDelay(following, delayOptions))
+      }
     }
     next()
   }

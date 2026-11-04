@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { splitReply } from './split.js'
+import { splitReply, typingDelay } from './split.js'
 
 const options = { groupMaxChars: 20, privateMaxChars: 30 }
 
@@ -41,4 +41,21 @@ test('a fenced code block is sent whole', () => {
 
 test('empty reply yields no messages', () => {
   assert.deepEqual(splitReply('   ', 'dm', options), [])
+})
+
+test('typingDelay estimates by length, clamps, and adds jitter', () => {
+  const delayOptions = { msPerChar: 100, minMs: 400, maxMs: 4000, jitterMs: 1000 }
+  // 3 chars → 300 → clamped to min 400; jitter 0
+  assert.equal(typingDelay('你好呀', delayOptions, () => 0), 400)
+  // 10 chars → 1000; jitter 0.5 → +500
+  assert.equal(typingDelay('一二三四五六七八九十', delayOptions, () => 0.5), 1500)
+  // very long → clamped to max 4000
+  assert.equal(typingDelay('字'.repeat(100), delayOptions, () => 0), 4000)
+})
+
+test('successive delays vary with text length and the random draw', () => {
+  const delayOptions = { msPerChar: 120, minMs: 400, maxMs: 4000, jitterMs: 500 }
+  const first = typingDelay('嗯', delayOptions, () => 0)
+  const second = typingDelay('嗯', delayOptions, () => 0.9)
+  assert.ok(second > first)
 })

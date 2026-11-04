@@ -157,7 +157,10 @@ replySplit:                       # 过长才分条（默认开；短回复就�
   enabled: true
   groupMaxChars: 20               # 群聊单条上限（超了才拆）
   privateMaxChars: 30             # 私聊单条上限（超了才拆）
-  delayMs: 1500                   # 分条之间的延迟
+  msPerChar: 120                  # 按字数估算「打字」间隔
+  minDelayMs: 400
+  maxDelayMs: 4000
+  jitterMs: 800                   # 额外随机抖动（防固定节奏）
   # 【长】/ 代码块 = 特殊场景：整条发，不分段、不限字数
 
 proactive:                        # 闲时主动发言（默认开，风险项），20~120 分钟随机触发

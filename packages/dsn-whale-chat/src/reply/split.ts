@@ -11,6 +11,27 @@ export interface ReplySplitOptions {
   readonly privateMaxChars: number
 }
 
+/** How long a human would plausibly take to type/send the next message. */
+export interface TypingDelayOptions {
+  /** Estimated milliseconds per character. */
+  readonly msPerChar: number
+  readonly minMs: number
+  readonly maxMs: number
+  /** Extra uniform random upper bound added on top of the estimate. */
+  readonly jitterMs: number
+}
+
+/**
+ * Estimate the gap before the next message: typing time by length, clamped,
+ * plus a random jitter. No fixed interval — successive gaps vary.
+ */
+export function typingDelay(text: string, options: TypingDelayOptions, random: () => number = Math.random): number {
+  const estimated = text.length * options.msPerChar
+  const base = Math.min(options.maxMs, Math.max(options.minMs, estimated))
+  const jitter = Math.floor(random() * Math.max(0, options.jitterMs))
+  return base + jitter
+}
+
 const LONG_MARKER = '【长】'
 
 export function splitReply(text: string, kind: 'group' | 'dm', options: ReplySplitOptions): string[] {
