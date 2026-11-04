@@ -160,9 +160,9 @@ replySplit:                       # 短句分条发（默认开）
   longFormMaxChars: 800           # 【长】/ 代码块的长文本上限
   delayMs: 1500                   # 分条之间的延迟
 
-proactive:                        # 闲时主动发言（默认开，风险项），15~30 分钟随机触发
-  private: { enabled: true, idleMinMinutes: 15, idleMaxMinutes: 30, maxPerDay: 1 }
-  group:   { enabled: true, idleMinMinutes: 15, idleMaxMinutes: 30, maxPerDay: 1 }
+proactive:                        # 闲时主动发言（默认开，风险项），20~120 分钟随机触发
+  private: { enabled: true, idleMinMinutes: 20, idleMaxMinutes: 120, maxPerDay: 1 }
+  group:   { enabled: true, idleMinMinutes: 20, idleMaxMinutes: 120, maxPerDay: 1 }
 
 randomInterject:                  # 群聊随机插话（默认开，风险项）
   enabled: true
