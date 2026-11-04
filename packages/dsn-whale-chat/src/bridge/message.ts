@@ -73,6 +73,14 @@ export function toInterjectMessage(message: ChatMessage, text: string) {
 export function toClaimMessage(message: ChatMessage) {
   return toNudgeMessage(
     message,
-    '（你刚认下这个人当主人。用你自己的方式问一句 ta 想被怎么称呼；没明确说就默认叫「主人」。）',
+    '（这是你们第一次私聊。自然点聊，别解释系统、也别说什么认主。顺口问一下：我该怎么叫你？你想怎么称呼我？ta 没明确说，就叫 ta「主人」。）',
+  )
+}
+
+/** One gentle reminder if the address is still unanswered on a later DM. */
+export function toRemindAddressMessage(message: ChatMessage) {
+  return toNudgeMessage(
+    message,
+    '（你还不知道该怎么称呼 ta。顺口再问一次怎么叫 ta；ta 还是不说，就叫「主人」。）',
   )
 }

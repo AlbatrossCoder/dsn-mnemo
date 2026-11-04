@@ -71,12 +71,13 @@ export function createPersonaSetTool(store: StateStore) {
     async execute(args, exec) {
       assertOwner(store, exec)
       if (args.reset === true) return store.reset()
-      const patch: { name?: string; addressUser?: string; custom?: string } = {}
+      const patch: { name?: string; addressUser?: string; custom?: string; addressPending?: boolean } = {}
       if (typeof args.name === 'string' && args.name.trim().length > 0) patch.name = args.name.trim()
       if (typeof args.addressUser === 'string' && args.addressUser.trim().length > 0) {
         patch.addressUser = args.addressUser.trim()
       }
       if (typeof args.custom === 'string') patch.custom = args.custom
+      if (patch.name !== undefined || patch.addressUser !== undefined) patch.addressPending = false
       return store.update(patch)
     },
   })

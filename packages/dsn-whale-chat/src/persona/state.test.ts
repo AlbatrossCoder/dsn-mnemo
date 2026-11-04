@@ -11,6 +11,7 @@ const defaults = {
   addressUser: '哥哥',
   custom: '',
   ownerId: '',
+  addressPending: false,
   toggles: { mischief: false, queen: false, kaomoji: false, troll: false },
 }
 

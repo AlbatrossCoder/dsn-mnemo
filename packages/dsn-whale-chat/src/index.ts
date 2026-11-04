@@ -171,6 +171,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     addressUser: config.persona.addressUser,
     custom: config.persona.custom,
     ownerId: config.owner.userId,
+    addressPending: false,
     toggles: { ...config.toggles },
   })
 
@@ -264,12 +265,13 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   }
 
   const pendingClaims = new Set<string>()
+  const pendingReminders = new Set<string>()
 
   /** Claim the owner on the first private message when none is configured yet. */
   function claimOwner(message: ChatMessage): boolean {
     if (message.kind !== 'dm' || !config.owner.claim) return false
     if (state.get().ownerId.length > 0) return false
-    state.update({ ownerId: message.userId })
+    state.update({ ownerId: message.userId, addressPending: true })
     return true
   }
 
@@ -282,7 +284,15 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   function receive(message: ChatMessage): void {
     if (message.text.trim().length === 0) return
     const key = keyOf(message)
-    if (claimOwner(message)) pendingClaims.add(key)
+    const claimed = claimOwner(message)
+    if (claimed) pendingClaims.add(key)
+    // Nothing in groups is answered before the owner is claimed.
+    if (message.kind === 'group' && state.get().ownerId.length === 0) return
+    // One gentle reminder on a later private message if the address is still unset.
+    if (!claimed && message.kind === 'dm' && state.get().ownerId.length > 0 && state.get().addressPending) {
+      state.update({ addressPending: false })
+      pendingReminders.add(key)
+    }
     if (message.kind === 'group' && !groupAddressed(message)) {
       // Group chatter the bot was not addressed in: maybe join in.
       if (interject()) void bridge.interject(message, speakerTag(message)).catch((error) => recordError(error))
@@ -300,7 +310,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     const last = lastByKey.get(key)
     if (last === undefined) return
     const claim = pendingClaims.delete(key)
-    void bridge.receive({ ...last, text: texts.join('\n') }, { claim }).catch((error) => recordError(error))
+    const remind = pendingReminders.delete(key)
+    void bridge.receive({ ...last, text: texts.join('\n') }, { claim, remind }).catch((error) => recordError(error))
   }
 
   function send(target: ChatMessage, text: string): void {

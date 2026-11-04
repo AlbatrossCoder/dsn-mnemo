@@ -16,6 +16,8 @@ export interface PersonaState {
   custom: string
   /** QQ number of the claimed owner; empty means "not claimed yet". */
   ownerId: string
+  /** The owner hasn't confirmed how they should be addressed yet. */
+  addressPending: boolean
   toggles: PersonaToggles
 }
 
@@ -39,6 +41,7 @@ function load(path: string, defaults: PersonaState): PersonaState {
       addressUser: parsed.addressUser ?? defaults.addressUser,
       custom: parsed.custom ?? defaults.custom,
       ownerId: parsed.ownerId ?? defaults.ownerId,
+      addressPending: parsed.addressPending ?? defaults.addressPending,
       toggles: { ...defaults.toggles, ...(parsed.toggles ?? {}) },
     }
   } catch {
