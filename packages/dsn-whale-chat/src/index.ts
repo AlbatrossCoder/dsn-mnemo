@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { ChatBridge } from './bridge/bridge.js'
 import { OneBotClient } from './channel/client.js'
 import type { ChatMessage } from './channel/types.js'
+import { createInterjectGate } from './interject/interject.js'
 import { assemblePersona } from './persona/assemble.js'
 import { BUILT_IN_PERSONAS, findPersona } from './persona/personas.js'
 import { createStateStore } from './persona/state.js'
@@ -44,6 +45,10 @@ export const Config = z.object({
   proactiveMaxPerDay: z.natural().default(1),
   quietStart: z.natural().default(23),
   quietEnd: z.natural().default(8),
+  randomInterjectEnabled: z.boolean().default(false),
+  randomInterjectProbability: z.number().default(0.05),
+  randomInterjectMinMessages: z.natural().default(20),
+  randomInterjectMaxPerHour: z.natural().default(2),
 })
 
 export type WhaleChatConfig = Schemastery.TypeT<typeof Config>
@@ -117,13 +122,24 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     },
   })
 
+  const interject = createInterjectGate({
+    enabled: config.randomInterjectEnabled,
+    probability: config.randomInterjectProbability,
+    minMessagesBetween: config.randomInterjectMinMessages,
+    maxPerHour: config.randomInterjectMaxPerHour,
+  })
+
   function keyOf(message: ChatMessage): string {
     return message.kind === 'group' ? `group:${message.groupId}` : `user:${message.userId}`
   }
 
   function receive(message: ChatMessage): void {
     if (message.text.trim().length === 0) return
-    if (message.kind === 'group' && config.groupTrigger === 'at' && !message.mentioned) return
+    if (message.kind === 'group' && config.groupTrigger === 'at' && !message.mentioned) {
+      // Group chatter the bot was not addressed in: maybe join in (off by default).
+      if (interject()) void bridge.interject(message, message.text)
+      return
+    }
     const key = keyOf(message)
     lastByKey.set(key, message)
     const rate = message.kind === 'group' ? groupRate : privateRate

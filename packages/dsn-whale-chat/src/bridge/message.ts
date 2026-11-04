@@ -42,21 +42,27 @@ export function toUserMessage(message: ChatMessage) {
 }
 
 /**
- * Build the idle "you may speak" nudge. The model answers with a message, or
- * `SILENT` to stay quiet; the source kind keeps it out of the chat log.
+ * Build a synthetic "you may speak" nudge. The model answers with a message,
+ * or `SILENT` to stay quiet; the source kind keeps it out of the chat log.
  */
-export function toProactiveMessage(message: ChatMessage) {
+export function toNudgeMessage(message: ChatMessage, instruction: string) {
   return createUserMessage({
-    content: [
-      {
-        type: 'text',
-        text: '（现在没有新消息。你可以主动说一句：如果想起了什么、有没聊完的话题、或到日子的锚点，就说；没有想说的就只回复 SILENT。）',
-      },
-    ],
+    content: [{ type: 'text', text: instruction }],
     source: {
       kind: 'qq-proactive',
       userId: message.userId,
       ...(message.groupId === null ? {} : { groupId: message.groupId }),
     },
   })
+}
+
+export function toProactiveMessage(message: ChatMessage) {
+  return toNudgeMessage(
+    message,
+    '（现在没有新消息。你可以主动说一句：如果想起了什么、有没聊完的话题、或到日子的锚点，就说；没有想说的就只回复 SILENT。）',
+  )
+}
+
+export function toInterjectMessage(message: ChatMessage, text: string) {
+  return toNudgeMessage(message, `群里刚才有人说：「${text}」。你可以接一句，或回 SILENT。`)
 }
