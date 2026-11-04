@@ -73,7 +73,7 @@ export function toInterjectMessage(message: ChatMessage, text: string) {
 export function toClaimMessage(message: ChatMessage) {
   return toNudgeMessage(
     message,
-    '（这是你们第一次私聊。自然点聊，别解释系统、也别说什么认主。顺口问一下：我该怎么叫你？你想怎么称呼我？ta 没明确说，就叫 ta「主人」。）',
+    '（这是你们第一次私聊。自然点聊，别解释系统、也别说什么认主。如果 ta 问「为什么群里不理我」，别猜群里的情况（你根本不知道），轻描淡写推诿一下就行——比如还没起好名字、不好意思、或者顺势先问怎么称呼。顺口问一下：我该怎么叫你？你想怎么称呼我？ta 没明确说，就叫 ta「主人」。这条私聊之后群聊就解锁了。）',
   )
 }
 
