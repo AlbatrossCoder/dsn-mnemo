@@ -1,6 +1,6 @@
 /**
- * Idle proactive speech: after a conversation goes quiet for a while, wake the
- * agent once with a "you may speak, or stay silent" nudge.
+ * Idle proactive speech: after a conversation goes quiet for a random while,
+ * wake the agent once with a "you may speak, or stay silent" nudge.
  *
  * Rate-safe by construction: at most `maxPerDay` fires per conversation, and
  * nothing fires during quiet hours.
@@ -8,7 +8,10 @@
 import { realScheduler, type Scheduler } from '../util/scheduler.js'
 
 export interface ProactivePolicy {
-  readonly idleMs: number
+  /** Lower bound of the random idle delay. */
+  readonly idleMinMs: number
+  /** Upper bound of the random idle delay. */
+  readonly idleMaxMs: number
   readonly maxPerDay: number
   /** Local-time `[startHour, endHour)` during which nothing fires. */
   readonly quietHours: readonly [number, number]
@@ -19,6 +22,7 @@ export interface ProactiveOptions {
   readonly onFire: (key: string) => void
   readonly scheduler?: Scheduler
   readonly now?: () => number
+  readonly random?: () => number
 }
 
 function dayOf(ms: number): string {
@@ -30,19 +34,24 @@ export class ProactiveScheduler {
   private readonly days = new Map<string, { day: string; count: number }>()
   private readonly scheduler: Scheduler
   private readonly now: () => number
+  private readonly random: () => number
 
   constructor(private readonly options: ProactiveOptions) {
     this.scheduler = options.scheduler ?? realScheduler
     this.now = options.now ?? Date.now
+    this.random = options.random ?? Math.random
   }
 
   /** Reset the idle timer for one conversation (call on every inbound message). */
   noteActivity(key: string): void {
     this.cancel(key)
+    const { idleMinMs, idleMaxMs } = this.options.policy
+    const span = Math.max(0, idleMaxMs - idleMinMs)
+    const delay = idleMinMs + this.random() * span
     const handle = this.scheduler.set(() => {
       this.timers.delete(key)
       this.fire(key)
-    }, Math.max(0, this.options.policy.idleMs))
+    }, Math.max(0, delay))
     this.timers.set(key, handle)
   }
 

@@ -2,44 +2,38 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createInterjectGate } from './interject.js'
 
+const base = { enabled: true, probability: 1, minMessagesBetween: 0, windowMinutes: 10, maxPerWindow: 3 }
+
 test('is off by default', () => {
-  const gate = createInterjectGate({ enabled: false, probability: 1, minMessagesBetween: 0, maxPerHour: 10 })
+  const gate = createInterjectGate({ ...base, enabled: false })
   assert.equal(gate(), false)
 })
 
 test('waits for minMessagesBetween before considering', () => {
-  let random = 0
-  const gate = createInterjectGate(
-    { enabled: true, probability: 1, minMessagesBetween: 3, maxPerHour: 10 },
-    { random: () => random },
-  )
+  const gate = createInterjectGate({ ...base, minMessagesBetween: 3 }, { random: () => 0 })
   assert.equal(gate(), false)
   assert.equal(gate(), false)
-  assert.equal(gate(), true) // third message
+  assert.equal(gate(), true)
 })
 
 test('respects the probability draw', () => {
   let draw = 0.9
-  const gate = createInterjectGate(
-    { enabled: true, probability: 0.05, minMessagesBetween: 0, maxPerHour: 10 },
-    { random: () => draw },
-  )
-  assert.equal(gate(), false) // 0.9 >= 0.05
+  const gate = createInterjectGate({ ...base, probability: 0.05 }, { random: () => draw })
+  assert.equal(gate(), false)
   draw = 0.01
-  assert.equal(gate(), true) // 0.01 < 0.05
+  assert.equal(gate(), true)
 })
 
-test('caps at maxPerHour and resets the counter', () => {
+test('caps at maxPerWindow per 10 minutes and resets after the window', () => {
   let clock = 0
-  let fires = 0
   const gate = createInterjectGate(
-    { enabled: true, probability: 1, minMessagesBetween: 1, maxPerHour: 1 },
+    { ...base, minMessagesBetween: 1, maxPerWindow: 3 },
     { now: () => clock, random: () => 0 },
   )
   assert.equal(gate(), true)
-  assert.equal(gate(), false) // cap
-  clock += 3_600_001
+  assert.equal(gate(), true)
+  assert.equal(gate(), true)
+  assert.equal(gate(), false) // fourth within 10 minutes is capped
+  clock += 10 * 60_000 + 1
   assert.equal(gate(), true) // window rolled
-  fires += 1
-  assert.equal(fires, 1)
 })

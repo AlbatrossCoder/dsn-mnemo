@@ -59,7 +59,7 @@ function toNudgeMessage(message: ChatMessage, instruction: string) {
 export function toProactiveMessage(message: ChatMessage) {
   return toNudgeMessage(
     message,
-    '（现在没有新消息。你可以主动说一句：如果想起了什么、有没聊完的话题、或到日子的锚点，就说；没有想说的就只回复 SILENT。）',
+    '（安静了一会儿。你可以翻翻之前的聊天接一句、随口说点什么、或者去找你熟悉的人搭话；没什么想说的就只回复 SILENT。）',
   )
 }
 

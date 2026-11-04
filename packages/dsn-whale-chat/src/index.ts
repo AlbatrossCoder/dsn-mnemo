@@ -99,12 +99,14 @@ export const Config = z.object({
   proactive: z.object({
     private: z.object({
       enabled: z.boolean().default(false),
-      idleMinutes: z.natural().default(30),
+      idleMinMinutes: z.natural().default(15),
+      idleMaxMinutes: z.natural().default(30),
       maxPerDay: z.natural().default(1),
     }),
     group: z.object({
       enabled: z.boolean().default(false),
-      idleMinutes: z.natural().default(60),
+      idleMinMinutes: z.natural().default(15),
+      idleMaxMinutes: z.natural().default(30),
       maxPerDay: z.natural().default(1),
     }),
   }),
@@ -113,7 +115,8 @@ export const Config = z.object({
     enabled: z.boolean().default(false),
     probability: z.number().default(0.05),
     minMessagesBetween: z.natural().default(20),
-    maxPerHour: z.natural().default(2),
+    windowMinutes: z.natural().default(10),
+    maxPerWindow: z.natural().default(3),
   }),
 
   schedule: z.object({
@@ -204,7 +207,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
 
   const privateProactive = new ProactiveScheduler({
     policy: {
-      idleMs: config.proactive.private.idleMinutes * 60_000,
+      idleMinMs: config.proactive.private.idleMinMinutes * 60_000,
+      idleMaxMs: config.proactive.private.idleMaxMinutes * 60_000,
       maxPerDay: config.proactive.private.maxPerDay,
       quietHours: quiet,
     },
@@ -212,7 +216,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   })
   const groupProactive = new ProactiveScheduler({
     policy: {
-      idleMs: config.proactive.group.idleMinutes * 60_000,
+      idleMinMs: config.proactive.group.idleMinMinutes * 60_000,
+      idleMaxMs: config.proactive.group.idleMaxMinutes * 60_000,
       maxPerDay: config.proactive.group.maxPerDay,
       quietHours: quiet,
     },
@@ -223,7 +228,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     enabled: config.randomInterject.enabled,
     probability: config.randomInterject.probability,
     minMessagesBetween: config.randomInterject.minMessagesBetween,
-    maxPerHour: config.randomInterject.maxPerHour,
+    windowMinutes: config.randomInterject.windowMinutes,
+    maxPerWindow: config.randomInterject.maxPerWindow,
   })
 
   function keyOf(message: ChatMessage): string {

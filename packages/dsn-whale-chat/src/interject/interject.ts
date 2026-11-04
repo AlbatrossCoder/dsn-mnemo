@@ -3,14 +3,15 @@
  *
  * Experimental and off by default: on every non-addressed group message there
  * is a small probability of joining in, but only after `minMessagesBetween`
- * and at most `maxPerHour`. Risk-heavy features stay conservative.
+ * and at most `maxPerWindow` per `windowMinutes`.
  */
 
 export interface InterjectPolicy {
   readonly enabled: boolean
   readonly probability: number
   readonly minMessagesBetween: number
-  readonly maxPerHour: number
+  readonly windowMinutes: number
+  readonly maxPerWindow: number
 }
 
 export interface InterjectOptions {
@@ -18,12 +19,11 @@ export interface InterjectOptions {
   readonly random?: () => number
 }
 
-const HOUR_MS = 3_600_000
-
 /** Build a gate: call it for each non-addressed group message; `true` = join in. */
 export function createInterjectGate(policy: InterjectPolicy, options: InterjectOptions = {}): () => boolean {
   const now = options.now ?? Date.now
   const random = options.random ?? Math.random
+  const windowMs = Math.max(1, policy.windowMinutes) * 60_000
   let messages = 0
   let windowStart = 0
   let windowCount = 0
@@ -34,11 +34,11 @@ export function createInterjectGate(policy: InterjectPolicy, options: InterjectO
     if (messages < policy.minMessagesBetween) return false
     if (random() >= policy.probability) return false
     const at = now()
-    if (at - windowStart >= HOUR_MS) {
+    if (at - windowStart >= windowMs) {
       windowStart = at
       windowCount = 0
     }
-    if (windowCount >= policy.maxPerHour) return false
+    if (windowCount >= policy.maxPerWindow) return false
     windowCount += 1
     messages = 0
     return true
