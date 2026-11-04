@@ -4,7 +4,7 @@
  * asks; the model must not rewrite its own core persona.
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { findPersona, type Persona } from '../persona/personas.js'
+import type { Persona } from '../persona/personas.js'
 import type { StateStore } from '../persona/state.js'
 
 const stateSchema = {
@@ -72,7 +72,7 @@ export function createPersonaSwitchTool(store: StateStore, personas: readonly Pe
       render: (_args, value) => [{ type: 'text', text: describe(value) }],
     },
     async execute(args) {
-      const persona = findPersona(args.id)
+      const persona = personas.find((candidate) => candidate.id === args.id)
       if (persona === undefined) throw new Error(`unknown persona: ${args.id}`)
       return store.update({ activeId: persona.id, name: persona.name })
     },

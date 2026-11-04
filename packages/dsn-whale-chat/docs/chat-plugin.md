@@ -91,6 +91,15 @@ persona:
   active: little-whale            # little-whale | big-whale
   addressUser: 哥哥
   custom: ''                      # 用户追加设定，优先级最高
+  aliases: [小鲸鱼, 鲸鱼, 鲸鲸, 鱼鱼, 鲸鱼娘]   # 群聊里这样叫她，也算在叫她
+  disliked: [大肥鱼, 小肥鱼, 喂]                # 这样叫会被小抗议一下
+
+# 追加自定义人格（同 id 覆盖内置）
+personas:
+  - id: my-dolphin
+    name: 小海豚
+    base: |
+      你是一只小海豚……
 
 toggles:                          # 四个开关默认全关
   mischief: false                 # 小鲸鱼恶趣味
@@ -99,7 +108,8 @@ toggles:                          # 四个开关默认全关
   troll: false                    # 小鲸鱼贴吧喷子
 
 trigger:
-  group: at                       # 群聊只 @（也可 all）
+  group: at                       # 群聊只 @（也可 all / keyword）
+  keywords: []                    # group=keyword 时，命中这些词也算在叫她
 
 rate:                             # 私聊：无冷却、有去抖
   debounceMs: 800
@@ -183,8 +193,13 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 7. 四个开关（恶趣味 / 女王 / 颜文字 / 贴吧喷子）**默认全关**；隐藏卡关闭时不注入。
 8. 溺爱属于大鲸鱼正常人格；反差/黄腔/情欲向属于女王开关。
 
-## 11. 与实现的差异（TODO）
+## 11. 已完成 / 未做
 
-- `aliases` / `disliked`（被叫名字的匹配）尚未实现；
-- 自定义人格（`personas` 配置追加）尚未实现，目前只有两个内置人格；
-- `trigger.group` 只支持 `at` / `all`，还没有关键词触发。
+**已完成**
+- `aliases` / `disliked`：群聊里被叫名字也算在叫她；被叫难听外号也会响应（小抗议）。
+- 自定义人格：配置 `personas` 追加（同 id 覆盖内置）。
+- 群聊关键词触发：`trigger.group: keyword` + `trigger.keywords`。
+
+**未做**
+- 真机 NapCat 联调；
+- 随机插话的「按话题相关性」筛选（目前纯概率 + 最小间隔 + 每小时上限）。

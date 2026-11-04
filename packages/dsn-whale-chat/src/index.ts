@@ -8,17 +8,21 @@ import { OneBotClient } from './channel/client.js'
 import type { ChatMessage } from './channel/types.js'
 import { createInterjectGate } from './interject/interject.js'
 import { assemblePersona } from './persona/assemble.js'
-import { BUILT_IN_PERSONAS, findPersona } from './persona/personas.js'
+import { BUILT_IN_PERSONAS, type Persona } from './persona/personas.js'
 import { createStateStore } from './persona/state.js'
 import { ProactiveScheduler } from './proactive/proactive.js'
 import { RateController } from './rate/rate.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
+import { matchesAny } from './util/text.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
 export const name = 'dsn-whale-chat'
 
 /** Services required before `apply` runs. */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'agents']
+
+const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
+const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
 
 /** User-facing configuration (mirrors docs/chat-plugin.md §6). */
 export const Config = z.object({
@@ -32,7 +36,12 @@ export const Config = z.object({
     active: z.string().default('little-whale'),
     addressUser: z.string().default('哥哥'),
     custom: z.string().default(''),
+    aliases: z.array(z.string()).default([...DEFAULT_ALIASES]),
+    disliked: z.array(z.string()).default([...DEFAULT_DISLIKED]),
   }),
+
+  /** Extra personas appended on top of the built-ins (same id overrides). */
+  personas: z.array(z.any()).default([]),
 
   toggles: z.object({
     mischief: z.boolean().default(false),
@@ -42,7 +51,9 @@ export const Config = z.object({
   }),
 
   trigger: z.object({
+    /** `at` | `all` | `keyword`. */
     group: z.string().default('at'),
+    keywords: z.array(z.string()).default([]),
   }),
 
   rate: z.object({
@@ -104,7 +115,18 @@ function recordError(error: unknown): void {
   }
 }
 
+/** Built-ins plus config-supplied personas; a custom id overrides a built-in. */
+function mergePersonas(builtIn: readonly Persona[], custom: readonly Persona[]): Persona[] {
+  const byId = new Map<string, Persona>()
+  for (const persona of builtIn) byId.set(persona.id, persona)
+  for (const persona of custom) byId.set(persona.id, persona)
+  return [...byId.values()]
+}
+
 export function apply(ctx: Context, config: WhaleChatConfig): void {
+  const personas = mergePersonas(BUILT_IN_PERSONAS, config.personas as readonly Persona[])
+  const findPersona = (id: string): Persona | undefined => personas.find((persona) => persona.id === id)
+
   const state = createStateStore(expandHome(config.statePath), {
     activeId: config.persona.active,
     name: findPersona(config.persona.active)?.name ?? config.persona.active,
@@ -188,20 +210,30 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (last !== undefined) void bridge.proactive(last)
   }
 
+  /** Was this group message meant for the bot (by @, name, or keyword)? */
+  function groupAddressed(message: ChatMessage): boolean {
+    if (message.mentioned) return true
+    const mode = config.trigger.group
+    if (mode === 'all') return true
+    if (matchesAny(message.text, config.persona.aliases)) return true
+    if (matchesAny(message.text, config.persona.disliked)) return true
+    if (mode === 'keyword' && matchesAny(message.text, config.trigger.keywords)) return true
+    return false
+  }
+
   function receive(message: ChatMessage): void {
     if (message.text.trim().length === 0) return
-    const isGroup = message.kind === 'group'
-    if (isGroup && config.trigger.group === 'at' && !message.mentioned) {
+    if (message.kind === 'group' && !groupAddressed(message)) {
       // Group chatter the bot was not addressed in: maybe join in (off by default).
       if (interject()) void bridge.interject(message, message.text)
       return
     }
     const key = keyOf(message)
     lastByKey.set(key, message)
-    const rate = isGroup ? groupRate : privateRate
+    const rate = message.kind === 'group' ? groupRate : privateRate
     rate.offer(key, message.text)
-    const proactive = isGroup ? groupProactive : privateProactive
-    const enabled = isGroup ? config.proactive.group.enabled : config.proactive.private.enabled
+    const proactive = message.kind === 'group' ? groupProactive : privateProactive
+    const enabled = message.kind === 'group' ? config.proactive.group.enabled : config.proactive.private.enabled
     if (enabled) proactive.noteActivity(key)
   }
 
@@ -232,7 +264,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     interpolate: false,
     text: () => {
       const current = state.get()
-      const persona = findPersona(current.activeId) ?? BUILT_IN_PERSONAS[0]
+      const persona = findPersona(current.activeId) ?? personas[0]
       if (persona === undefined) return ''
       return assemblePersona(persona, {
         addressUser: current.addressUser,
@@ -243,7 +275,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   })
 
   ctx.tools.register(createPersonaSetTool(state))
-  ctx.tools.register(createPersonaSwitchTool(state, BUILT_IN_PERSONAS))
+  ctx.tools.register(createPersonaSwitchTool(state, personas))
   ctx.tools.register(createPersonaToggleTool(state))
 
   try {

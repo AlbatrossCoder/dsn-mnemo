@@ -88,7 +88,3 @@ export const BIG_WHALE: Persona = {
 }
 
 export const BUILT_IN_PERSONAS: readonly Persona[] = [LITTLE_WHALE, BIG_WHALE]
-
-export function findPersona(id: string): Persona | undefined {
-  return BUILT_IN_PERSONAS.find((persona) => persona.id === id)
-}
