@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { RateController, type RatePolicy, type Scheduler } from './rate.js'
+import { RateController, type RatePolicy } from './rate.js'
+import type { Scheduler } from '../util/scheduler.js'
 
 interface Job {
   handle: number

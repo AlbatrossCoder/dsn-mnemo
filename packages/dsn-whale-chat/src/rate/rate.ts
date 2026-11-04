@@ -5,6 +5,7 @@
  * Pure state machine with injectable clock and scheduler, so it is testable
  * without real timers.
  */
+import { realScheduler, type Scheduler } from '../util/scheduler.js'
 
 export interface RatePolicy {
   /** Wait this long after the last message before flushing. */
@@ -15,16 +16,6 @@ export interface RatePolicy {
   readonly cooldownMs: number
   readonly maxPerMinute: number
   readonly maxPerHour: number
-}
-
-export interface Scheduler {
-  set(callback: () => void, delayMs: number): unknown
-  clear(handle: unknown): void
-}
-
-export const realScheduler: Scheduler = {
-  set: (callback, delayMs) => setTimeout(callback, delayMs),
-  clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 }
 
 export interface RateOptions {

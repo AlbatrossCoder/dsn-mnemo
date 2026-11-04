@@ -34,8 +34,3 @@ export interface ChatMessage {
   /** Unix seconds, `0` when OneBot did not provide one. */
   readonly at: number
 }
-
-/** One notification this channel cares about (reserved for lifecycle events). */
-export interface ChatNotification {
-  readonly kind: 'connected' | 'disconnected'
-}

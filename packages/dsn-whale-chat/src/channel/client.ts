@@ -76,15 +76,22 @@ export class OneBotClient {
 
   private openSocket(): void {
     if (this.stopped) return
-    this.connection = this.connect(this.tokenizedUrl(), {
-      onOpen: () => {
-        this.open = true
-        this.attempt = 0
-      },
-      onMessage: (data) => this.handle(data),
-      onClose: () => this.handleClose(),
-      onError: (error) => this.options.onError?.(error),
-    })
+    try {
+      this.connection = this.connect(this.tokenizedUrl(), {
+        onOpen: () => {
+          this.open = true
+          this.attempt = 0
+        },
+        onMessage: (data) => this.handle(data),
+        onClose: () => this.handleClose(),
+        onError: (error) => this.options.onError?.(error),
+      })
+    } catch (error) {
+      // A synchronous connect failure (bad URL, missing WebSocket) still retries.
+      this.options.onError?.(error)
+      this.connection = null
+      this.handleClose()
+    }
   }
 
   private tokenizedUrl(): string {

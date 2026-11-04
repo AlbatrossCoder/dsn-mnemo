@@ -45,7 +45,7 @@ export function toUserMessage(message: ChatMessage) {
  * Build a synthetic "you may speak" nudge. The model answers with a message,
  * or `SILENT` to stay quiet; the source kind keeps it out of the chat log.
  */
-export function toNudgeMessage(message: ChatMessage, instruction: string) {
+function toNudgeMessage(message: ChatMessage, instruction: string) {
   return createUserMessage({
     content: [{ type: 'text', text: instruction }],
     source: {

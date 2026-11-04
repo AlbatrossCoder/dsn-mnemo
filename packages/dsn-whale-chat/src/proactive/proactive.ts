@@ -5,7 +5,7 @@
  * Rate-safe by construction: at most `maxPerDay` fires per conversation, and
  * nothing fires during quiet hours.
  */
-import { realScheduler, type Scheduler } from '../rate/rate.js'
+import { realScheduler, type Scheduler } from '../util/scheduler.js'
 
 export interface ProactivePolicy {
   readonly idleMs: number

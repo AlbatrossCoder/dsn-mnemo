@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ProactiveScheduler } from './proactive.js'
-import type { Scheduler } from '../rate/rate.js'
+import type { Scheduler } from '../util/scheduler.js'
 
 interface Job {
   handle: number
