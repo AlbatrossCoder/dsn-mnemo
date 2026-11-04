@@ -34,9 +34,9 @@ test('troll turns on the little whale 贴吧喷子 layer', () => {
   assert.match(text, /就这？/)
 })
 
-test('queen turns on the little whale queen layer', () => {
+test('queen turns on the little whale 小黄鱼 layer', () => {
   const text = assemblePersona(LITTLE_WHALE, { toggles: { ...off, queen: true } })
-  assert.match(text, /女王/)
+  assert.match(text, /小黄鱼/)
 })
 
 test('kaomoji off appends a no-kaomoji rule; on does not', () => {
