@@ -1,18 +1,46 @@
 # dsn-whale-chat
 
-鲸鱼娘 QQ 聊天插件（DeepSeek Harness）。通道 + 双人格 + 聊天频率控制；**记忆交给 [dsn-mnemo](../dsn-mnemo)**，本插件不内置记忆。
+鲸鱼娘 QQ 聊天插件（DeepSeek Harness）：**OneBot 11 通道 + 双人格 + 聊天频率控制**。
 
-**状态**：设计阶段，骨架已建，实现开发中。
+记忆交给 [`dsn-mnemo`](https://www.npmjs.com/package/dsn-mnemo)，本插件不内置记忆，只负责「把 QQ 消息变成 DSH 会话」。
 
-设计与人格卡：
+## 特性
 
-- [聊天插件设计](docs/chat-plugin.md)
-- 人格卡（`docs/persona/`）：小鲸鱼 / 大鲸鱼（基础卡 + 隐藏卡）
-- [QQ 接入分析](docs/qq-integration.md)
+- **OneBot 11 通道**：连接 NapCat / SnowLuma，指数退避重连、`message_id` 去重。
+- **双人格**：小鲸鱼（萝莉）/ 大鲸鱼（御姐），配置可追加自定义人格。
+- **隐藏人格**：恶趣味 / 贴吧喷子 / 女王，各有开关；**关闭时完全不注入**。
+- **触发控制**：私聊全收；群聊支持 `@` / 全体 / 关键词。
+- **频率控制**：去抖合并、冷却、每分钟·每小时上限。
+- **闲时主动 + 随机插话**：可配置，默认关闭。
+- **稳定前缀注入**：人格放在 `systemPrompt.section`，命中 prefix cache。
 
-## 开发
+## 安装
 
 ```sh
-pnpm run build
-pnpm run test
+dsh plugin install dsn-whale-chat
 ```
+
+或写进 profile 的 `bundles`。
+
+## 最小配置
+
+```yaml
+wsUrl: ws://127.0.0.1:3001
+accessToken: ''
+persona:
+  active: little-whale
+  addressUser: 哥哥
+toggles:
+  mischief: false
+  queen: false
+  kaomoji: false
+  troll: false
+trigger:
+  group: at
+```
+
+完整配置（触发、频率、闲时主动、随机插话、免打扰、自定义人格）见仓库 `docs/chat-plugin.md`。
+
+## 许可
+
+[Apache License 2.0](LICENSE)。

@@ -42,11 +42,11 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "watch": "tsc -w -p tsconfig.json",
     "test": "node --test \"lib/**/*.test.js\"",
     "verify": "pnpm run build && pnpm run test",
-    "prepack": "tsc -p tsconfig.json"
+    "prepack": "node -e \"require('node:fs').rmSync('lib',{recursive:true,force:true})\" && tsc -p tsconfig.json"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.5",
