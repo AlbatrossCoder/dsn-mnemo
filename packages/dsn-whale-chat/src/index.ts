@@ -1,4 +1,5 @@
 import type { Context } from '@deepseek-ai/cordis'
+import type { Agent } from '@deepseek-ai/dsh-agent'
 import z from '@deepseek-ai/schemastery'
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -12,6 +13,7 @@ import { BUILT_IN_PERSONAS, type Persona } from './persona/personas.js'
 import { createStateStore } from './persona/state.js'
 import { ProactiveScheduler } from './proactive/proactive.js'
 import { RateController } from './rate/rate.js'
+import { splitReply } from './reply/split.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
 import { matchesAny } from './util/text.js'
 
@@ -20,6 +22,21 @@ export const name = 'dsn-whale-chat'
 
 /** Services required before `apply` runs. */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
+
+/** Persona-independent chat policy injected once per process (stable prefix). */
+const CHAT_POLICY = [
+  '【聊天规矩】',
+  '1. 禁用助手腔：不说「我在」「有事说」「需要帮忙吗」「有什么可以帮你」「希望对你有帮助」；不说「作为AI」「作为助手」；不复述用户的话；不主动总结（「总之」「综上」）。',
+  '2. 禁用译制腔：「……又……」「像……一样」堆比喻、「不是……而是……」「值得注意的是」「总的来说」「某种程度上」。',
+  '3. 用汉语短句、口语；不用书面语长句。',
+  '4. 不解释记忆、系统、插件机制。',
+  '5. 事实优先：不确定就说「不确定」，不编。',
+  '6. 报错：先认，再给办法，不甩锅。',
+  '7. 默认分条发：用空行分段，每段一句；长文本（查资料 / 代码 / 清单）开头写【长】，才允许展开。',
+].join('\n')
+
+const GROUP_CHANNEL = '【当前场景】QQ 群聊。每条不超过 20 字；短、别刷屏；没被叫到别插话。'
+const PRIVATE_CHANNEL = '【当前场景】QQ 私聊。每条不超过 30 字；可以展开，但一条一句；内容多就分几条发。'
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
 const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
@@ -69,6 +86,14 @@ export const Config = z.object({
     cooldownMs: z.natural().default(30_000),
     maxPerMinute: z.natural().default(3),
     maxPerHour: z.natural().default(30),
+  }),
+
+  replySplit: z.object({
+    enabled: z.boolean().default(true),
+    groupMaxChars: z.natural().default(20),
+    privateMaxChars: z.natural().default(30),
+    longFormMaxChars: z.natural().default(800),
+    delayMs: z.natural().default(1500),
   }),
 
   proactive: z.object({
@@ -244,8 +269,32 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   }
 
   function send(target: ChatMessage, text: string): void {
-    if (target.kind === 'group' && target.groupId !== null) client.sendGroup(target.groupId, text)
-    else client.sendPrivate(target.userId, text)
+    const deliver = (segment: string): void => {
+      try {
+        if (target.kind === 'group' && target.groupId !== null) client.sendGroup(target.groupId, segment)
+        else client.sendPrivate(target.userId, segment)
+      } catch (error) {
+        recordError(error)
+      }
+    }
+    if (!config.replySplit.enabled) {
+      deliver(text)
+      return
+    }
+    const segments = splitReply(text, target.kind === 'group' ? 'group' : 'dm', {
+      groupMaxChars: config.replySplit.groupMaxChars,
+      privateMaxChars: config.replySplit.privateMaxChars,
+      longFormMaxChars: config.replySplit.longFormMaxChars,
+    })
+    let index = 0
+    const next = (): void => {
+      if (index >= segments.length) return
+      const segment = segments[index] as string
+      index += 1
+      deliver(segment)
+      if (index < segments.length) setTimeout(next, config.replySplit.delayMs)
+    }
+    next()
   }
 
   ctx.effect(() => () => {
@@ -272,6 +321,25 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
         toggles: current.toggles,
       })
     },
+  })
+
+  ctx.systemPrompt.section({
+    name: 'whale:policy',
+    order: 21,
+    interpolate: false,
+    text: () => CHAT_POLICY,
+  })
+
+  // Per-agent channel rules: group bursts are short, private may expand.
+  ctx.on('agent/created', ({ agent }: { agent: Agent }) => {
+    const id = agent.session.id
+    if (!id.startsWith('whale-chat:')) return
+    agent.ctx.systemPrompt.context({
+      name: 'whale:channel',
+      order: 22,
+      interpolate: false,
+      text: () => (id.includes(':group:') ? GROUP_CHANNEL : PRIVATE_CHANNEL),
+    })
   })
 
   ctx.tools.register(createPersonaSetTool(state))

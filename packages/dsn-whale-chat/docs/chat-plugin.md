@@ -57,6 +57,29 @@
 - `kaomoji` 开关：关闭时去掉颜文字相关条目，并追加一条「不要使用颜文字 / emoji」；
 - 情欲向内容**建议只在私聊开**，群聊默认不启用。
 
+## 3.5 三层注入与人设写法
+
+注入分三层，**角色（怎么说话）和规矩（怎么干活）解耦**：
+
+| 层 | 内容 | 位置 |
+|---|---|---|
+| `whale:persona` | 身份 / 说话样子 / 具体细节 / 反应 / 语气样本 / 隐藏层 | 全局稳定前缀 |
+| `whale:policy` | 禁 AI 腔、不解释系统、事实优先、报错、分条 | 全局稳定前缀 |
+| `whale:channel` | 群聊 ≤20 字 / 私聊 ≤30 字 / 长文本例外 | 每 agent（按会话类型） |
+
+**人设卡结构**（`personas.ts`）：
+
+```
+【你是谁】…
+【说话】…
+【具体】…（3~5 个具体细节，不要抽象形容词）
+【反应】…（被夸/被骂/被冷落/被逗，各一句倾向，不写台词）
+```
+
+外加 `samples`：3~4 段短对话，标注「体会分寸，不要照抄」。隐藏层同样是「语气切换 + 样本 + 分寸」。
+
+**为什么这样拆**：角色和工程规矩混在一起，模型会「执行规格」而不是「扮演」，容易出 AI 腔；规矩单独成段，人设只负责口吻。
+
 ## 4. 通用约定（两个人格都遵守）
 
 - 事实优先，不编造。
@@ -124,6 +147,13 @@ groupRate:                        # 群聊：合并 + 冷却 + 限额
   maxPerMinute: 3
   maxPerHour: 30
 
+replySplit:                       # 短句分条发（默认开）
+  enabled: true
+  groupMaxChars: 20               # 群聊单条上限
+  privateMaxChars: 30             # 私聊单条上限
+  longFormMaxChars: 800           # 【长】/ 代码块的长文本上限
+  delayMs: 1500                   # 分条之间的延迟
+
 proactive:                        # 闲时主动发言（默认关）
   private: { enabled: false, idleMinutes: 30, maxPerDay: 1 }
   group:   { enabled: false, idleMinutes: 60, maxPerDay: 1 }
@@ -159,6 +189,7 @@ QQ ──OneBot WS──▶ dsn-whale-chat
                      ├─ persona    基础卡 + 隐藏卡按开关拼装、稳定前缀注入
                      │              persona_set / switch_persona / persona_toggle
                      ├─ rate       触发 → 去抖合并 → 冷却/限流
+                     ├─ reply      按 20/30 字拆条，1.5s 间隔发送（【长】/代码块例外）
                      ├─ proactive  闲时唤醒（可沉默）+ 免打扰 + 每日上限
                      ├─ interject  群聊随机插话（实验性）
                      └─ bridge     把 { kind:'qq', userId, groupId, mentioned } 放进 source
@@ -170,6 +201,7 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 | `channel` | OneBot 11 WS 连接、指数退避重连、`message_id` 去重、@ 判定、发送与限流 |
 | `persona` | 按开关拼装基础卡+隐藏卡、注入稳定前缀、三个 persona 工具、运行时状态持久化 |
 | `rate` | 去抖（debounce）、合并（batch）、冷却（cooldown）、每分钟/每小时上限 |
+| `reply` | 短句分条（群聊 20 / 私聊 30 字）、长文本例外、1.5s 间隔发送 |
 | `proactive` | 空闲计时、免打扰、每日上限、`SILENT` 可沉默 |
 | `interject` | 概率 + 最小间隔 + 每小时上限的随机插话闸门 |
 | `bridge` | 构造 `UserMessage.source`（身份）、`agent.followup()`、监听 `assistant/message` 回发 |
