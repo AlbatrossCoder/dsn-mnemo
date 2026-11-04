@@ -1,6 +1,7 @@
 node_modules/
 lib/
 *.tsbuildinfo
+*.tgz
 probe.txt
 *.log
 .DS_Store
