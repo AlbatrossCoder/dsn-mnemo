@@ -41,6 +41,9 @@ const CHAT_POLICY = [
 const GROUP_CHANNEL = '【当前场景】QQ 群聊。你写的换行会分成一条条消息发出去——写多少、怎么断，按情境和心情自然来，没有固定格式。长内容用【长】。'
 const PRIVATE_CHANNEL = '【当前场景】QQ 私聊。你写的换行会分成一条条消息发出去——写多少、怎么断，按情境和心情自然来，没有固定格式。长内容用【长】。'
 
+/** A segment at least this long is a "long reply": send it without a typing delay. */
+const LONG_SEGMENT_CHARS = 60
+
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
 const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
 
@@ -287,6 +290,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   function receive(message: ChatMessage): void {
     if (message.text.trim().length === 0) return
     const key = keyOf(message)
+    // A new inbound message interrupts any still-queued reply segments.
+    cancelPendingSend(key)
     const claimed = claimOwner(message)
     if (claimed) pendingClaims.add(key)
     // Nothing in groups is answered before the owner is claimed.
@@ -317,7 +322,19 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     void bridge.receive({ ...last, text: texts.join('\n') }, { claim, remind }).catch((error) => recordError(error))
   }
 
+  /** In-flight split reply per conversation; a new message cancels it. */
+  const pendingSends = new Map<string, { timer?: ReturnType<typeof setTimeout> }>()
+
+  /** Stop any still-queued segments for this conversation. */
+  function cancelPendingSend(key: string): void {
+    const pending = pendingSends.get(key)
+    if (pending?.timer !== undefined) clearTimeout(pending.timer)
+    pendingSends.delete(key)
+  }
+
   function send(target: ChatMessage, text: string): void {
+    const key = keyOf(target)
+    cancelPendingSend(key)
     const deliver = (segment: string): void => {
       try {
         if (target.kind === 'group' && target.groupId !== null) client.sendGroup(target.groupId, segment)
@@ -340,15 +357,26 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       maxMs: config.replySplit.maxDelayMs,
       jitterMs: config.replySplit.jitterMs,
     }
+    const pending: { timer?: ReturnType<typeof setTimeout> } = {}
+    pendingSends.set(key, pending)
     let index = 0
     const next = (): void => {
-      if (index >= segments.length) return
+      // Superseded by a newer reply or cancelled by a new inbound message.
+      if (pendingSends.get(key) !== pending) return
+      if (index >= segments.length) {
+        pendingSends.delete(key)
+        return
+      }
       const segment = segments[index] as string
       index += 1
       deliver(segment)
       if (index < segments.length) {
         const following = segments[index] as string
-        setTimeout(next, typingDelay(following, delayOptions))
+        // Long forms / very long segments go out without an artificial wait.
+        const delay = following.length >= LONG_SEGMENT_CHARS ? 0 : typingDelay(following, delayOptions)
+        pending.timer = setTimeout(next, delay)
+      } else {
+        pendingSends.delete(key)
       }
     }
     next()
