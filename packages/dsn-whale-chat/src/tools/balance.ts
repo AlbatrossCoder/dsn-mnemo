@@ -1,45 +1,127 @@
 /**
- * `get_balance` reads the balance cache written by `dsh-balance-view`.
+ * `get_balance` queries the host's DeepSeek account service directly.
  *
- * The balance itself is fetched by the DSH account provider, not by this
- * plugin; here we only read the local cache so the chat agent has a tool it
- * can call when the owner asks about the account balance.
+ * The chat agent cannot see the account service itself, so this tool is the
+ * only bridge: it reads `ctx.get('deepseekAccount')`, calls `getBalance()`,
+ * and returns the recharge wallet + bonus wallet totals. No external plugin
+ * is required.
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import type { Context } from '@deepseek-ai/cordis'
 
 export interface BalanceToolOptions {
-  /** Path to the balance cache written by dsh-balance-view. */
-  readonly cachePath?: string
+  /** The plugin context; the account service is looked up from it. */
+  readonly ctx?: Context
 }
 
-interface BalanceCache {
-  readonly ok?: unknown
-  readonly total?: unknown
-  readonly recharge?: unknown
-  readonly bonus?: unknown
+interface Wallet {
   readonly currency?: unknown
-  readonly checkedAt?: unknown
-  readonly code?: unknown
-  readonly error?: unknown
+  readonly balance?: unknown
 }
 
-function expandHome(path: string): string {
-  if (path === '~') return homedir()
-  if (path.startsWith('~/') || path.startsWith('~\\')) return join(homedir(), path.slice(2))
-  return path
+interface AccountBalance {
+  readonly status?: unknown
+  readonly value?: unknown
+  readonly bonusWallets?: unknown
+}
+
+interface BalanceOk {
+  readonly ok: true
+  readonly total: number
+  readonly recharge: number
+  readonly bonus: number
+  readonly currency: string
+  readonly checkedAt: string
+}
+
+interface BalanceErr {
+  readonly ok: false
+  readonly error: string
+}
+
+type BalanceResult = BalanceOk | BalanceErr
+
+function toNumber(value: unknown): number | null {
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+/** Sum the recharge wallets and the bonus wallets into one total. */
+function summarize(result: AccountBalance): BalanceResult {
+  const wallets: Array<{ kind: 'recharge' | 'bonus'; currency: string; balance: number }> = []
+  const collect = (list: unknown, kind: 'recharge' | 'bonus'): void => {
+    if (!Array.isArray(list)) return
+    for (const raw of list) {
+      const wallet = raw as Wallet
+      const balance = toNumber(wallet?.balance)
+      if (balance === null) continue
+      wallets.push({
+        kind,
+        currency: String(wallet.currency ?? 'CNY').toUpperCase(),
+        balance,
+      })
+    }
+  }
+  collect(result.value, 'recharge')
+  collect(result.bonusWallets, 'bonus')
+  if (wallets.length === 0) return { ok: false, error: '余额里没有任何钱包。' }
+
+  const cny = wallets.filter((wallet) => wallet.currency === 'CNY')
+  const picked = cny.length > 0 ? cny : wallets
+  const currency = picked[0]?.currency ?? 'CNY'
+  const same = picked.filter((wallet) => wallet.currency === currency)
+  const total = same.reduce((sum, wallet) => sum + wallet.balance, 0)
+  const recharge = same
+    .filter((wallet) => wallet.kind === 'recharge')
+    .reduce((sum, wallet) => sum + wallet.balance, 0)
+  const bonus = same
+    .filter((wallet) => wallet.kind === 'bonus')
+    .reduce((sum, wallet) => sum + wallet.balance, 0)
+
+  return {
+    ok: true,
+    total: round2(total),
+    recharge: round2(recharge),
+    bonus: round2(bonus),
+    currency,
+    checkedAt: new Date().toISOString(),
+  }
+}
+
+/** Ask the host account service. `undefined` means the service is absent. */
+async function queryAccount(ctx: Context | undefined): Promise<BalanceResult | undefined> {
+  if (ctx === undefined) return undefined
+  try {
+    const getter = (ctx as unknown as { get?: (name: string) => unknown }).get
+    const account = typeof getter === 'function' ? getter.call(ctx, 'deepseekAccount') : undefined
+    const getBalance = (account as { getBalance?: (client: unknown) => Promise<unknown> } | undefined)?.getBalance
+    if (typeof getBalance !== 'function') return undefined
+    const result = (await getBalance.call(account, {
+      version: process.env.DSH_CLIENT_VERSION ?? process.env.DSH_VERSION ?? 'unknown',
+      locale: process.env.DSH_LOCALE ?? 'zh_CN',
+      timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
+    })) as AccountBalance | null
+    if (result === null || result === undefined) {
+      return { ok: false, error: '没有登录 DeepSeek 账号，查不到余额。' }
+    }
+    if (result.status !== 'ready') {
+      return { ok: false, error: `账号服务还没就绪（${String(result.status ?? 'unknown')}）。` }
+    }
+    return summarize(result)
+  } catch {
+    return undefined
+  }
 }
 
 /** Build the registry-ready `get_balance` tool. */
 export function createBalanceTool(options: BalanceToolOptions = {}) {
-  const cachePath = expandHome(options.cachePath ?? join(homedir(), '.dsh', 'dsh-balance-view', 'cache.json'))
-
   return defineTool({
     name: 'get_balance',
-    description:
-      '查询 DeepSeek 账户余额（充值钱包 + 赠金）。数据来自 dsh-balance-view 的本地缓存，可能有两分钟延迟。',
+    description: '查询当前 DeepSeek 账户余额（充值钱包 + 赠金）。需要 DSH 已登录账号。',
     parameters: {},
     output: {
       schema: {
@@ -66,30 +148,9 @@ export function createBalanceTool(options: BalanceToolOptions = {}) {
       ],
     },
     async execute() {
-      let parsed: BalanceCache
-      try {
-        parsed = JSON.parse(readFileSync(cachePath, 'utf8')) as BalanceCache
-      } catch {
-        return {
-          ok: false,
-          error: '余额缓存不存在：没装 dsh-balance-view，或它还没刷新过。',
-        }
-      }
-      if (parsed.ok !== true) {
-        const detail =
-          typeof parsed.error === 'string' && parsed.error.length > 0
-            ? parsed.error
-            : String(parsed.code ?? '未知错误')
-        return { ok: false, error: detail }
-      }
-      return {
-        ok: true,
-        total: Number(parsed.total) || 0,
-        recharge: Number(parsed.recharge) || 0,
-        bonus: Number(parsed.bonus) || 0,
-        currency: typeof parsed.currency === 'string' ? parsed.currency : 'CNY',
-        checkedAt: typeof parsed.checkedAt === 'string' ? parsed.checkedAt : '',
-      }
+      const result = await queryAccount(options.ctx)
+      if (result !== undefined) return result
+      return { ok: false, error: '宿主没有账号服务（deepseek-account 未加载），查不到余额。' }
     },
   })
 }

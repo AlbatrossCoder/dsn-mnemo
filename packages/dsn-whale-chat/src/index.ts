@@ -47,8 +47,6 @@ export const Config = z.object({
   wsUrl: z.string().default('ws://127.0.0.1:3001'),
   accessToken: z.string().default(''),
   statePath: z.string().default('~/.dsh/whale-chat-state.json'),
-  /** Cache file written by dsh-balance-view; read by the `get_balance` tool. */
-  balanceCachePath: z.string().default('~/.dsh/dsh-balance-view/cache.json'),
   provider: z.string().default(''),
   model: z.string().default(''),
 
@@ -504,7 +502,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   ctx.tools.register(createPersonaSetTool(state))
   ctx.tools.register(createPersonaSwitchTool(state, personas))
   ctx.tools.register(createPersonaToggleTool(state))
-  ctx.tools.register(createBalanceTool({ cachePath: config.balanceCachePath }))
+  ctx.tools.register(createBalanceTool({ ctx }))
 
   try {
     client.start()

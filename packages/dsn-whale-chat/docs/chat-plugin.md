@@ -185,22 +185,15 @@ schedule:
 
 ## 6.6 余额查询（get_balance）
 
-装了余额插件后，本插件会注册一个 `get_balance` 工具：
+本插件内置了一个 `get_balance` 工具，**不需要装别的余额插件**：
 
-- 读取 `balanceCachePath` 指向的 `cache.json`（默认 `~/.dsh/dsh-balance-view/cache.json`）；
-- 返回 `total / recharge / bonus / currency / checkedAt`；
-- 缓存由外部插件刷新（约 2 分钟一次），这里只读、不主动请求；
-- 没装、没刷新、没登录时返回错误，不编数字。
+- 工具内部通过 `ctx.get('deepseekAccount')` 调宿主账号服务的 `getBalance()`；
+- 返回 `total / recharge / bonus / currency / checkedAt`（充值钱包 + 赠金）；
+- 没登录、账号服务没就绪、没有钱包时返回错误，不编数字。
 
-推荐搭配 [dsh-balance-view](https://github.com/President-H/dsh-balance-view)：
+前提：DSH 已登录 DeepSeek 账号（profile 里用了 `deepseek-account` 这个 provider）。
 
-```bash
-dsh plugin --profile <profile> add @president_h_999/dsh-balance-view
-# 或从本地目录安装
-dsh plugin --profile <profile> add link:<仓库绝对路径>
-```
-
-装好后，主人私聊问她余额，她就能调 `get_balance` 报出数字。
+主人私聊问她「查一下余额」，她就会调这个工具报出数字。
 
 ## 7. 修改方式（分层）
 
