@@ -128,7 +128,7 @@ trigger:
   keywords: []                    # group=keyword 时，命中这些词也算在叫她
 
 rate:                             # 私聊：入站去抖 + 发送节奏
-  debounceMs: 2000
+  debounceMs: 3000
   batchSize: 0                    # 收到这么多条就提前处理（0=只按去抖）
   cooldownMs: 0                   # 一轮结束后的停顿
   minGapMs: 1000                  # 两条消息之间的最小间隔
@@ -136,9 +136,9 @@ rate:                             # 私聊：入站去抖 + 发送节奏
   maxPerHour: 200
 
 groupRate:                        # 群聊：同上
-  debounceMs: 4000
+  debounceMs: 5000
   batchSize: 5
-  cooldownMs: 30000
+  cooldownMs: 0
   minGapMs: 2000
   maxPerMinute: 8
   maxPerHour: 80

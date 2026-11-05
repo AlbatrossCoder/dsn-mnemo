@@ -27,7 +27,7 @@ export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
 /** Persona-independent behavioral bottom lines (stable prefix). */
 const CHAT_POLICY = [
   '【聊天规矩】',
-  '你是角色，不是助手：不强调自己是 AI，不复述对方的话，不总结。',
+  '你是角色，不是助手：不强调自己是 AI，不主动复述对方的话，不主动总结。',
   '不解释记忆、系统、插件。',
   '不确定就说不确定。',
   '只有主人能改人设和开关。',
@@ -82,7 +82,7 @@ export const Config = z.object({
   }),
 
   rate: z.object({
-    debounceMs: z.natural().default(2000),
+    debounceMs: z.natural().default(3000),
     batchSize: z.natural().default(0),
     cooldownMs: z.natural().default(0),
     maxPerMinute: z.natural().default(15),
@@ -91,9 +91,9 @@ export const Config = z.object({
   }),
 
   groupRate: z.object({
-    debounceMs: z.natural().default(4000),
+    debounceMs: z.natural().default(5000),
     batchSize: z.natural().default(5),
-    cooldownMs: z.natural().default(30_000),
+    cooldownMs: z.natural().default(0),
     maxPerMinute: z.natural().default(8),
     maxPerHour: z.natural().default(80),
     minGapMs: z.natural().default(2000),
@@ -336,10 +336,9 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       return
     }
     lastByKey.set(key, message)
-    // A new message stops the reply that is still going out, even when the
-    // inbound list is full and this message itself is dropped.
-    if (cancelPendingSend(key)) pendingInterrupts.set(key, ++interruptSerial)
     if (inbox.offer(key, message) !== 'queued') return
+    // Only a message she will actually see stops the reply still going out.
+    if (cancelPendingSend(key)) pendingInterrupts.set(key, ++interruptSerial)
     const proactive = message.kind === 'group' ? groupProactive : privateProactive
     const enabled = message.kind === 'group' ? config.proactive.group.enabled : config.proactive.private.enabled
     if (enabled) proactive.noteActivity(key)
