@@ -3,7 +3,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ChatMessage } from '../channel/types.js'
-import { conversationKey, toInterjectMessage, toProactiveMessage, toUserMessage } from './message.js'
+import { conversationKey, toFollowMessage, toInterjectMessage, toProactiveMessage, toUserMessage } from './message.js'
 import { assistantText } from './reply.js'
 
 export interface BridgeOptions {
@@ -13,6 +13,8 @@ export interface BridgeOptions {
   readonly onError?: (error: unknown) => void
   /** Fired when a turn finishes, so the inbound list can start the next one. */
   readonly onTurnEnd?: (key: string) => void
+  /** Whether the assistant actually said something (`SILENT` is not spoken). */
+  readonly onSpoken?: (key: string, spoken: boolean) => void
   readonly provider?: string
   readonly model?: string
 }
@@ -42,7 +44,9 @@ export class ChatBridge {
       const text = assistantText(event.data.message.content)
       if (text.length === 0) return
       // The idle nudge can be declined; "SILENT" is never sent to QQ.
-      if (text.trim().toUpperCase() === 'SILENT') return
+      const spoken = text.trim().toUpperCase() !== 'SILENT'
+      this.options.onSpoken?.(conversationKey(target), spoken)
+      if (!spoken) return
       try {
         this.options.reply(target, text)
       } catch (error) {
@@ -64,6 +68,14 @@ export class ChatBridge {
     const agent = await this.agentFor(key)
     this.conversations.set(agent.session.id, target)
     agent.followup(toProactiveMessage(target))
+  }
+
+  /** Wake the agent to consider continuing a group topic it already joined. */
+  async follow(target: ChatMessage, text: string): Promise<void> {
+    const key = conversationKey(target)
+    const agent = await this.agentFor(key)
+    this.conversations.set(agent.session.id, target)
+    agent.followup(toFollowMessage(target, text))
   }
 
   /** Wake the agent to consider joining a group message it was not addressed in. */

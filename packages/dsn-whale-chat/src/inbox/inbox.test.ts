@@ -91,3 +91,22 @@ test('messages that arrive during a turn wait for the turn to finish', () => {
   assert.deepEqual(flushed, [[1], [2]])
   assert.equal(inbox.blocksIdle('a'), true)
 })
+
+test('a paused list waits until poke', () => {
+  const { scheduler, jobs } = fakeScheduler()
+  let paused = true
+  const flushed: number[][] = []
+  const inbox = new Inbox<number>({
+    debounceMs: () => 100,
+    paused: () => paused,
+    scheduler,
+    onFlush: (_key, messages) => flushed.push([...messages]),
+  })
+  inbox.offer('a', 1)
+  assert.equal(jobs.length, 0)
+  inbox.poke('a')
+  assert.deepEqual(flushed, [])
+  paused = false
+  inbox.poke('a')
+  assert.deepEqual(flushed, [[1]])
+})

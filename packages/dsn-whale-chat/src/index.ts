@@ -12,6 +12,7 @@ import { assemblePersona } from './persona/assemble.js'
 import { BUILT_IN_PERSONAS, type Persona } from './persona/personas.js'
 import { configFingerprint, createStateStore } from './persona/state.js'
 import { ProactiveScheduler } from './proactive/proactive.js'
+import { FollowBuffer } from './follow/follow.js'
 import { Inbox } from './inbox/inbox.js'
 import { BURST_GAP_MS, OutboundQueue, burstSegmentIndex } from './reply/outbound.js'
 import { splitReply, typingDelay } from './reply/split.js'
@@ -36,7 +37,7 @@ const CHAT_POLICY = [
 
 const CHANNEL_MECHANICS = '换行会分成多条消息发出。回复里不要带 [昵称/QQ号]。'
 
-const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}`
+const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}没法 @ 到人。要提到谁，就喊你看见的昵称；起过外号的，就用外号。`
 const PRIVATE_CHANNEL = `【当前场景】QQ 私聊。${CHANNEL_MECHANICS}`
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
@@ -224,6 +225,9 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     reply: (target, text) => send(target, text),
     onError: (error) => recordError(error),
     onTurnEnd: (key) => finishTurn(key),
+    onSpoken: (key, spoken) => {
+      if (spoken) spokenKeys.add(key)
+    },
     provider: config.provider.length === 0 ? undefined : config.provider,
     model: config.model.length === 0 ? undefined : config.model,
   })
@@ -231,12 +235,26 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   const rateFor = <T>(key: string, value: (rate: typeof config.rate) => T): T =>
     value(key.startsWith('group:') ? config.groupRate : config.rate)
 
+  /** A group turn is in flight (reply, follow, interject, or idle). */
+  const groupBusy = new Set<string>()
+  /** This turn was a follow-up look, so silence closes the window. */
+  const followTurns = new Set<string>()
+  /** She produced a real reply during the turn that is still finishing. */
+  const spokenKeys = new Set<string>()
+
   const inbox = new Inbox<ChatMessage>({
     debounceMs: (key) => rateFor(key, (rate) => rate.debounceMs),
     batchSize: (key) => rateFor(key, (rate) => rate.batchSize),
     cooldownMs: (key) => rateFor(key, (rate) => rate.cooldownMs),
+    paused: (key) => groupBusy.has(key),
     max: config.inbox.maxMessages,
     onFlush: (key, messages, status) => flush(key, messages, status),
+  })
+
+  const follow = new FollowBuffer<ChatMessage>({
+    debounceMs: () => config.groupRate.debounceMs,
+    isBusy: (key) => groupBusy.has(key) || inbox.blocksIdle(key),
+    onFlush: (key, messages) => flushFollow(key, messages),
   })
 
   const quiet: readonly [number, number] = [
@@ -276,11 +294,19 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   }
 
   function fireProactive(key: string): void {
-    if (inbox.blocksIdle(key)) return
+    if (inbox.blocksIdle(key) || follow.blocksIdle(key) || groupBusy.has(key)) return
     const last = lastByKey.get(key)
     if (last === undefined) return
     singleShot.add(key)
+    beginTurn(key)
     void bridge.proactive(last).catch((error) => recordError(error))
+  }
+
+  /** Mark a group turn so later chatter is watched instead of starting another turn. */
+  function beginTurn(key: string): void {
+    if (!key.startsWith('group:')) return
+    groupBusy.add(key)
+    follow.accept(key)
   }
 
   /** Was this group message meant for the bot (by @, name, or keyword)? */
@@ -330,7 +356,16 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (claimed) firstChats.add(key)
     if (message.kind === 'group' && state.get().ownerId.length === 0) return
     if (message.kind === 'group' && !groupAddressed(message)) {
-      if (!inbox.blocksIdle(key) && interject()) {
+      // After she has spoken, or while a group turn is already going, these
+      // lines stay in the follow window instead of rolling interject.
+      if (follow.isOpen(key) || groupBusy.has(key) || inbox.blocksIdle(key)) {
+        follow.accept(key)
+        follow.offer(key, message)
+        lastByKey.set(key, message)
+        return
+      }
+      if (interject()) {
+        beginTurn(key)
         singleShot.add(key)
         void bridge.interject(message, speakerTag(message)).catch((error) => recordError(error))
       }
@@ -348,13 +383,32 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   function flush(key: string, messages: readonly ChatMessage[], status: string): void {
     const last = messages[messages.length - 1]
     if (last === undefined) return
+    beginTurn(key)
     turnStatus.set(key, status)
     void bridge
       .receive({ ...last, text: messages.map((message) => speakerTag(message)).join('\n') })
       .catch((error) => recordError(error))
   }
 
+  function flushFollow(key: string, messages: readonly ChatMessage[]): void {
+    const last = messages[messages.length - 1]
+    if (last === undefined) return
+    beginTurn(key)
+    followTurns.add(key)
+    void bridge
+      .follow(last, messages.map((message) => speakerTag(message)).join('\n'))
+      .catch((error) => recordError(error))
+  }
+
   function finishTurn(key: string): void {
+    groupBusy.delete(key)
+    const spoke = spokenKeys.delete(key)
+    const wasFollow = followTurns.delete(key)
+    if (key.startsWith('group:')) {
+      if (spoke) follow.watch(key)
+      else if (wasFollow) follow.close(key)
+      else follow.release(key)
+    }
     const pending = pendingInterrupts.get(key)
     const shown = shownInterrupts.get(key)
     if (pending !== undefined && pending === shown) {
@@ -365,6 +419,10 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     turnStatus.delete(key)
     singleShot.delete(key)
     inbox.settle(key)
+    if (groupBusy.has(key)) return
+    inbox.poke(key)
+    if (groupBusy.has(key)) return
+    follow.poke(key)
   }
 
   interface SendToken {
@@ -426,6 +484,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   ctx.effect(() => () => {
     client.stop()
     inbox.cancelAll()
+    follow.cancelAll()
     for (const token of sendTokens.values()) token.cancelled = true
     privateProactive.cancelAll()
     groupProactive.cancelAll()

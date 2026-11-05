@@ -51,7 +51,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.8.1'
+const VERSION = '0.8.2'
 
 /**
  * Record a failure where a human can find it. The loader reports plugin

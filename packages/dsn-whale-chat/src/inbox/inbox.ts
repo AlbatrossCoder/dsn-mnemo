@@ -22,6 +22,11 @@ export interface InboxOptions<T> {
   readonly batchSize?: (key: string) => number
   /** Pause after a finished turn before the next batch is handed over. */
   readonly cooldownMs?: (key: string) => number
+  /**
+   * Another turn for this conversation is already running.
+   * Queued messages stay put until `poke`.
+   */
+  readonly paused?: (key: string) => boolean
   readonly onFlush: (key: string, messages: readonly T[], status: QueueStatus) => void
   readonly max?: number
   readonly scheduler?: Scheduler
@@ -30,6 +35,7 @@ export interface InboxOptions<T> {
 export class Inbox<T> {
   private readonly waiting = new Map<string, T[]>()
   private readonly busy = new Set<string>()
+  private readonly held = new Set<string>()
   private readonly timers = new Map<string, unknown>()
   private readonly scheduler: Scheduler
   private readonly max: number
@@ -51,6 +57,11 @@ export class Inbox<T> {
     list.push(message)
     this.waiting.set(key, list)
     if (this.busy.has(key)) return 'queued'
+    if (this.options.paused?.(key) === true) {
+      this.held.add(key)
+      this.clearTimer(key)
+      return 'queued'
+    }
     const batch = this.options.batchSize?.(key) ?? 0
     if (batch > 0 && list.length >= batch) {
       this.clearTimer(key)
@@ -66,12 +77,24 @@ export class Inbox<T> {
     this.busy.delete(key)
     const list = this.waiting.get(key)
     if (list === undefined || list.length === 0) return
+    if (this.options.paused?.(key) === true) {
+      this.held.add(key)
+      return
+    }
     const wait = Math.max(0, this.options.cooldownMs?.(key) ?? 0)
     if (wait === 0) {
       this.flush(key)
       return
     }
     this.arm(key, wait)
+  }
+
+  /** Flush a batch that was held because another turn was running. */
+  poke(key: string): void {
+    if (!this.held.has(key) || this.busy.has(key)) return
+    if (this.options.paused?.(key) === true) return
+    this.held.delete(key)
+    this.flush(key)
   }
 
   /** Drop pending timers. Used when the plugin stops. */
@@ -83,13 +106,20 @@ export class Inbox<T> {
     this.clearTimer(key)
     const handle = this.scheduler.set(() => {
       this.timers.delete(key)
-      if (!this.busy.has(key)) this.flush(key)
+      if (this.busy.has(key)) return
+      if (this.options.paused?.(key) === true) {
+        if ((this.waiting.get(key)?.length ?? 0) > 0) this.held.add(key)
+        return
+      }
+      this.held.delete(key)
+      this.flush(key)
     }, Math.max(0, ms))
     this.timers.set(key, handle)
   }
 
   private flush(key: string): void {
     if (this.busy.has(key)) return
+    this.held.delete(key)
     const list = this.waiting.get(key)
     if (list === undefined || list.length === 0) return
     this.waiting.delete(key)
