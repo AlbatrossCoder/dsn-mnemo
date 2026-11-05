@@ -59,9 +59,9 @@ function toNudgeMessage(message: ChatMessage, instruction: string) {
 }
 
 export function toProactiveMessage(message: ChatMessage) {
-  return toNudgeMessage(message, '（安静了一会儿。想说就说，不想说就只回复 SILENT。）')
+  return toNudgeMessage(message, '（安静了一会儿。不想说就回 SILENT。）')
 }
 
 export function toInterjectMessage(message: ChatMessage, text: string) {
-  return toNudgeMessage(message, `群里刚才有人说：「${text}」。想接就接，不想就只回复 SILENT。`)
+  return toNudgeMessage(message, `群里刚才有人说：「${text}」。不想接就回 SILENT。`)
 }
