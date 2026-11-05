@@ -373,6 +373,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       return
     }
     lastByKey.set(key, message)
+    // A direct call resets the follow-up slow-down.
+    follow.reset(key)
     if (inbox.offer(key, message) !== 'queued') return
     // Only a message she will actually see stops the reply still going out.
     if (cancelPendingSend(key)) pendingInterrupts.set(key, ++interruptSerial)
@@ -406,8 +408,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     const spoke = spokenKeys.delete(key)
     const wasFollow = followTurns.delete(key)
     if (key.startsWith('group:')) {
-      if (spoke) follow.watch(key)
-      else if (wasFollow) follow.close(key)
+      if (spoke) {
+        follow.watch(key)
+        // Every follow-up reply in a row makes the next batch wait longer.
+        if (wasFollow) follow.bump(key)
+      } else if (wasFollow) follow.close(key)
       else follow.release(key)
     }
     const pending = pendingInterrupts.get(key)

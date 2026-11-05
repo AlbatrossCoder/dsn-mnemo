@@ -8,6 +8,8 @@
 import { realScheduler, type Scheduler } from '../util/scheduler.js'
 
 export const FOLLOW_LIMIT = 10
+/** At most this many slow-downs; the pause stops growing beyond it. */
+export const FOLLOW_BACKOFF_MAX = 3
 
 export interface FollowOptions<T> {
   readonly limit?: number
@@ -24,12 +26,29 @@ export class FollowBuffer<T> {
   private readonly sticky = new Set<string>()
   private readonly held = new Set<string>()
   private readonly timers = new Map<string, unknown>()
+  /** How many follow-up replies in a row; each one slows the next batch. */
+  private readonly levels = new Map<string, number>()
   private readonly scheduler: Scheduler
   private readonly limit: number
 
   constructor(private readonly options: FollowOptions<T>) {
     this.scheduler = options.scheduler ?? realScheduler
     this.limit = options.limit ?? FOLLOW_LIMIT
+  }
+
+  /** A follow-up reply happened: wait longer before the next batch. */
+  bump(key: string): void {
+    const level = this.levels.get(key) ?? 0
+    this.levels.set(key, Math.min(FOLLOW_BACKOFF_MAX, level + 1))
+  }
+
+  /** She was called directly: the backoff starts over. */
+  reset(key: string): void {
+    this.levels.delete(key)
+  }
+
+  levelOf(key: string): number {
+    return this.levels.get(key) ?? 0
   }
 
   /** Take messages for the turn that is running now. Dropped if she never speaks. */
@@ -55,6 +74,7 @@ export class FollowBuffer<T> {
     this.sticky.delete(key)
     this.waiting.delete(key)
     this.held.delete(key)
+    this.levels.delete(key)
     this.clearTimer(key)
   }
 
@@ -100,7 +120,9 @@ export class FollowBuffer<T> {
 
   private arm(key: string): void {
     this.clearTimer(key)
-    const handle = this.scheduler.set(() => this.due(key), Math.max(0, this.options.debounceMs(key)))
+    const base = Math.max(0, this.options.debounceMs(key))
+    const ms = base * (1 + (this.levels.get(key) ?? 0))
+    const handle = this.scheduler.set(() => this.due(key), ms)
     this.timers.set(key, handle)
   }
 

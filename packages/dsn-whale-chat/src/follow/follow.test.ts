@@ -6,16 +6,17 @@ import type { Scheduler } from '../util/scheduler.js'
 interface Job {
   handle: number
   fn: () => void
+  delay: number
 }
 
 function fakeScheduler(): { scheduler: Scheduler; jobs: Job[]; run: (index: number) => void } {
   const jobs: Job[] = []
   let next = 1
   const scheduler: Scheduler = {
-    set(callback) {
+    set(callback, delay) {
       const handle = next
       next += 1
-      jobs.push({ handle, fn: callback })
+      jobs.push({ handle, fn: callback, delay })
       return handle
     },
     clear(handle) {
@@ -138,4 +139,26 @@ test('silence on a follow batch closes the window and drops what is left', () =>
   assert.equal(follow.isWatching('g'), false)
   assert.equal(follow.blocksIdle('g'), false)
   assert.equal(follow.offer('g', 2), 'ignored')
+})
+
+test('each follow-up reply slows the next batch; a direct call resets it', () => {
+  const { scheduler, jobs } = fakeScheduler()
+  const follow = new FollowBuffer<number>({
+    debounceMs: () => 100,
+    isBusy: () => false,
+    scheduler,
+    onFlush: () => {},
+  })
+  follow.watch('g')
+  follow.offer('g', 1)
+  assert.equal(jobs[jobs.length - 1]?.delay, 100)
+  follow.bump('g')
+  follow.offer('g', 2)
+  assert.equal(jobs[jobs.length - 1]?.delay, 200)
+  follow.bump('g')
+  follow.offer('g', 3)
+  assert.equal(jobs[jobs.length - 1]?.delay, 300)
+  follow.reset('g')
+  follow.offer('g', 4)
+  assert.equal(jobs[jobs.length - 1]?.delay, 100)
 })
