@@ -350,8 +350,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     return `[${name}/${message.userId}] ${message.text}`
   }
 
-  function receive(message: ChatMessage): void {
-    if (message.text.trim().length === 0) return
+  function receive(raw: ChatMessage): void {
+    const hasText = raw.text.trim().length > 0
+    // A bare @ still counts as calling her; only empty chatter is ignored.
+    if (!hasText && !raw.mentioned) return
+    const message = hasText ? raw : { ...raw, text: '（@）' }
     const key = keyOf(message)
     const claimed = claimOwner(message)
     if (claimed) firstChats.add(key)
