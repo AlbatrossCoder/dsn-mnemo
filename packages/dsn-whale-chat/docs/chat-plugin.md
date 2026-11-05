@@ -137,7 +137,7 @@ rate:                             # 私聊：入站去抖 + 发送节奏
 
 groupRate:                        # 群聊：同上
   debounceMs: 5000
-  batchSize: 5
+  batchSize: 0                    # 收到这么多条就提前处理（0=只按去抖）
   cooldownMs: 0
   minGapMs: 2000
   maxPerMinute: 8

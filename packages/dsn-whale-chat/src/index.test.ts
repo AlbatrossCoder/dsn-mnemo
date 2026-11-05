@@ -18,6 +18,7 @@ test('plugin exports shape and default config', () => {
   assert.equal(parsed.trigger.group, 'at')
   assert.equal(parsed.rate.debounceMs, 3000)
   assert.equal(parsed.groupRate.debounceMs, 5000)
+  assert.equal(parsed.groupRate.batchSize, 0)
   assert.equal(parsed.replySplit.enabled, true)
   assert.equal(parsed.replySplit.platformMaxChars, 4500)
   assert.equal(parsed.proactive.private.enabled, true)

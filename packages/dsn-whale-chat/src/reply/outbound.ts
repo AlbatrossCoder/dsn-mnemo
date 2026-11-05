@@ -9,6 +9,18 @@
 
 const MINUTE_MS = 60_000
 const HOUR_MS = 3_600_000
+/** Closest two messages of one reply may be. Shorter than the normal gap, never instant. */
+export const BURST_GAP_MS = 700
+const BURST_CHANCE = 0.15
+
+/**
+ * Which segment of one reply may follow the previous one closely.
+ * At most one pair. The first segment is never the close one. `-1` means none.
+ */
+export function burstSegmentIndex(count: number, random: () => number = Math.random): number {
+  if (count < 2 || random() >= BURST_CHANCE) return -1
+  return 1 + Math.floor(random() * (count - 1))
+}
 
 export interface OutboundLimits {
   readonly minGapMs: number
@@ -20,8 +32,13 @@ export interface OutboundJob {
   readonly kind: 'dm' | 'group'
   /** Typing pause for this one message. */
   readonly delayMs: number
-  /** Skip the per-kind gap so two short messages can go out back to back. */
+  /**
+   * This message may follow the previous one of the same kind more closely.
+   * The short gap still applies, and the minute / hour caps still apply.
+   */
   readonly burst?: boolean
+  /** Minimum gap used when `burst` is set. Defaults to 700ms. */
+  readonly burstGapMs?: number
   readonly cancelled: () => boolean
   /** Runs at the start of the pause. Failures must not throw. */
   readonly beforeWait?: () => void
@@ -90,10 +107,10 @@ export class OutboundQueue {
   }
 
   private gapWait(job: OutboundJob, at: number): number {
-    if (job.burst === true) return 0
     const last = this.lastAt.get(job.kind)
     if (last === undefined) return 0
-    return Math.max(0, this.limits(job.kind).minGapMs - (at - last))
+    const gap = job.burst === true ? (job.burstGapMs ?? BURST_GAP_MS) : this.limits(job.kind).minGapMs
+    return Math.max(0, gap - (at - last))
   }
 
   private limitWait(kind: 'dm' | 'group', at: number): number {

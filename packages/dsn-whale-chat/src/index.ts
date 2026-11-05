@@ -13,7 +13,7 @@ import { BUILT_IN_PERSONAS, type Persona } from './persona/personas.js'
 import { configFingerprint, createStateStore } from './persona/state.js'
 import { ProactiveScheduler } from './proactive/proactive.js'
 import { Inbox } from './inbox/inbox.js'
-import { OutboundQueue } from './reply/outbound.js'
+import { BURST_GAP_MS, OutboundQueue, burstSegmentIndex } from './reply/outbound.js'
 import { splitReply, typingDelay } from './reply/split.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
 import { matchesAny } from './util/text.js'
@@ -92,7 +92,7 @@ export const Config = z.object({
 
   groupRate: z.object({
     debounceMs: z.natural().default(5000),
-    batchSize: z.natural().default(5),
+    batchSize: z.natural().default(0),
     cooldownMs: z.natural().default(0),
     maxPerMinute: z.natural().default(8),
     maxPerHour: z.natural().default(80),
@@ -395,14 +395,15 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (segments.length === 0) return
     const token: SendToken = { cancelled: false, left: segments.length }
     sendTokens.set(key, token)
-    for (const segment of segments) {
-      // Occasionally the next bubble goes out immediately — real people
-      // sometimes fire two short messages back to back.
-      const burst = Math.random() < 0.15
+    const closeAt = burstSegmentIndex(segments.length)
+    for (let index = 0; index < segments.length; index += 1) {
+      const segment = segments[index] as string
+      const burst = index === closeAt
       outbound.enqueue({
         kind,
         burst,
-        delayMs: burst ? 150 + Math.floor(Math.random() * 350) : typingDelay(segment),
+        burstGapMs: BURST_GAP_MS,
+        delayMs: burst ? BURST_GAP_MS + Math.floor(Math.random() * 300) : typingDelay(segment),
         cancelled: () => token.cancelled,
         beforeWait: () => {
           if (kind === 'dm' && config.typingStatus) client.setInputStatus(target.userId)
