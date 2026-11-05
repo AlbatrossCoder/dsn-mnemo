@@ -303,11 +303,30 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     void bridge.proactive(last).catch((error) => recordError(error))
   }
 
+  /** Timeout for a group turn, so a stuck agent cannot block the group forever. */
+  const turnTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** A followup can land after the final step and never start a turn; release it. */
+  const TURN_TIMEOUT_MS = 120_000
+
+  function forceRelease(key: string): void {
+    turnTimers.delete(key)
+    if (!groupBusy.has(key)) return
+    groupBusy.delete(key)
+    followTurns.delete(key)
+    spokenKeys.delete(key)
+    inbox.settle(key)
+    inbox.poke(key)
+    follow.poke(key)
+  }
+
   /** Mark a group turn so later chatter is watched instead of starting another turn. */
   function beginTurn(key: string): void {
     if (!key.startsWith('group:')) return
     groupBusy.add(key)
     follow.accept(key)
+    const previous = turnTimers.get(key)
+    if (previous !== undefined) clearTimeout(previous)
+    turnTimers.set(key, setTimeout(() => forceRelease(key), TURN_TIMEOUT_MS))
   }
 
   /** Was this group message meant for the bot (by @, name, or keyword)? */
@@ -407,6 +426,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   }
 
   function finishTurn(key: string): void {
+    const timer = turnTimers.get(key)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      turnTimers.delete(key)
+    }
     groupBusy.delete(key)
     const spoke = spokenKeys.delete(key)
     const wasFollow = followTurns.delete(key)
