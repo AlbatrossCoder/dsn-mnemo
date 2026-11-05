@@ -14,6 +14,8 @@ const stateSchema = {
     name: { type: 'string' },
     addressUser: { type: 'string' },
     custom: { type: 'string' },
+    ownerId: { type: 'string' },
+    addressPending: { type: 'boolean' },
     toggles: {
       type: 'object',
       properties: {
