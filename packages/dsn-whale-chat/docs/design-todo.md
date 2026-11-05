@@ -3,7 +3,7 @@
 > 本文是聊天插件 `dsn-whale-chat` 与记忆插件 `dsn-mnemo` 这一轮改造的结论。
 > 目标是更拟人：人物背景代替人格卡，不写台词和固定场面的处理方式；已入站的消息交给她自己处理；日记继续一条条写；用每轮都在的画像补上「上下文截断认不出来」。
 >
-> 代码现状：这一轮落在 `dsn-whale-chat@0.2.0` 与 `dsn-mnemo@0.8.0`。
+> 代码现状：这一轮落在 `dsn-whale-chat@0.2.1` 与 `dsn-mnemo@0.8.1`。
 
 ## 1. 保持不动
 
@@ -176,4 +176,4 @@
 6. 画像的表、工具和每轮注入。
 7. 同步 `docs/chat-plugin.md`、`docs/persona/`。记忆插件的 `docs/memory-model.md` 补上画像和日记引导。测试跟着改。
 
-版本号定为 `dsn-whale-chat@0.2.0`、`dsn-mnemo@0.8.0`。
+版本号定为 `dsn-whale-chat@0.2.1`、`dsn-mnemo@0.8.1`。
