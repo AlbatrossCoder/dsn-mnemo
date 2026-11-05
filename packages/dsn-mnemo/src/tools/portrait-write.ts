@@ -41,18 +41,6 @@ function ownerFromFile(path: string): string {
   }
 }
 
-/** The QQ user of the latest real chat message, used to gate group/member writes. */
-function lastQqUserId(messages: readonly unknown[]): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index] as { source?: { kind?: unknown; userId?: unknown } } | undefined
-    if (message?.source?.kind !== 'qq') continue
-    if (typeof message.source.userId === 'string' && message.source.userId.length > 0) {
-      return message.source.userId
-    }
-  }
-  return undefined
-}
-
 function limitFor(part: 'long' | 'short', subjectId: string, ownerId: string): number {
   const doubled = ownerId.length > 0 && (subjectId === ownerId || subjectId.endsWith(`:${ownerId}`))
   return (doubled ? OWNER : BASE)[part]
@@ -121,13 +109,6 @@ export function createPortraitWriteTool(db: DatabaseSync, options: PortraitToolO
       let id: string
       if (subject.kind === 'group') {
         if (target === 'person') throw new Error('群里不写私聊画像。')
-        // A group portrait or a member portrait is authority-sensitive: only
-        // the owner may write it, so a random member cannot poison someone
-        // else's stored portrait.
-        const speaker = lastQqUserId(messages)
-        if (ownerId.length === 0 || speaker !== ownerId) {
-          throw new Error('只有主人能写群或群友的画像。')
-        }
         if (target === 'group') {
           kind = 'group'
           id = subject.id

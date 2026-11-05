@@ -107,8 +107,6 @@ export const Config = z.object({
   replySplit: z.object({
     enabled: z.boolean().default(true),
     platformMaxChars: z.natural().default(4500),
-    /** Prompt-side guideline: a reply over this should be split by the model. */
-    replyMaxChars: z.natural().default(800),
   }),
 
   /** Private-chat typing status (NapCat supports it; other backends may not). */
@@ -400,9 +398,13 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     const token: SendToken = { cancelled: false, left: segments.length }
     sendTokens.set(key, token)
     for (const segment of segments) {
+      // Occasionally the next bubble goes out immediately — real people
+      // sometimes fire two short messages back to back.
+      const burst = Math.random() < 0.15
       outbound.enqueue({
         kind,
-        delayMs: typingDelay(segment),
+        burst,
+        delayMs: burst ? 150 + Math.floor(Math.random() * 350) : typingDelay(segment),
         cancelled: () => token.cancelled,
         beforeWait: () => {
           if (kind === 'dm' && config.typingStatus) client.setInputStatus(target.userId)
@@ -473,7 +475,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
           ? `【${role}】QQ ${current.ownerId}。称呼还没定。`
           : `【${role}】QQ ${current.ownerId}。称呼是「${current.addressUser}」。`
         : `【${role}】还没认主。`
-    const lines = [scene, owner, `一次回复最多 ${config.replySplit.replyMaxChars} 字；超过就用换行分成几条。`]
+    const lines = [scene, owner]
     if (firstChats.has(key)) lines.push('这是第一次私聊，称呼还没定。')
     const interrupt = pendingInterrupts.get(key)
     if (interrupt !== undefined) {

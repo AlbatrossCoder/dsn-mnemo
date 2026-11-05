@@ -20,7 +20,6 @@ test('plugin exports shape and default config', () => {
   assert.equal(parsed.groupRate.debounceMs, 4000)
   assert.equal(parsed.replySplit.enabled, true)
   assert.equal(parsed.replySplit.platformMaxChars, 4500)
-  assert.equal(parsed.replySplit.replyMaxChars, 800)
   assert.equal(parsed.proactive.private.enabled, true)
   assert.equal(parsed.proactive.group.enabled, true)
   assert.equal(parsed.randomInterject.enabled, true)

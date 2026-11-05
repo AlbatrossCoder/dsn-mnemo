@@ -20,6 +20,8 @@ export interface OutboundJob {
   readonly kind: 'dm' | 'group'
   /** Typing pause for this one message. */
   readonly delayMs: number
+  /** Skip the per-kind gap so two short messages can go out back to back. */
+  readonly burst?: boolean
   readonly cancelled: () => boolean
   /** Runs at the start of the pause. Failures must not throw. */
   readonly beforeWait?: () => void
@@ -75,7 +77,7 @@ export class OutboundQueue {
     let typing = Math.max(0, job.delayMs)
     while (!job.cancelled()) {
       const at = this.now()
-      const pause = Math.max(typing, this.gapWait(job.kind, at), this.limitWait(job.kind, at))
+      const pause = Math.max(typing, this.gapWait(job, at), this.limitWait(job.kind, at))
       if (pause <= 0) return true
       await this.sleep(pause)
       typing = 0
@@ -87,10 +89,11 @@ export class OutboundQueue {
     return kind === 'group' ? this.options.group : this.options.dm
   }
 
-  private gapWait(kind: 'dm' | 'group', at: number): number {
-    const last = this.lastAt.get(kind)
+  private gapWait(job: OutboundJob, at: number): number {
+    if (job.burst === true) return 0
+    const last = this.lastAt.get(job.kind)
     if (last === undefined) return 0
-    return Math.max(0, this.limits(kind).minGapMs - (at - last))
+    return Math.max(0, this.limits(job.kind).minGapMs - (at - last))
   }
 
   private limitWait(kind: 'dm' | 'group', at: number): number {

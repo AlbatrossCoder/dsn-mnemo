@@ -148,8 +148,8 @@ inbox:
 
 replySplit:
   enabled: true
-  platformMaxChars: 4500          # 单条超过这个长度才在句末切开
-  replyMaxChars: 800              # 提示词里的分段规则：超了由模型自己换行分段，插件不截断
+  platformMaxChars: 4500          # 单条超过这个长度才在句末切开；不截断
+  # 没有字数规则：分不分段由模型自己决定
 
 typingStatus: true                # 私聊“正在输入”（NapCat 支持；SnowLuma 可关）
 
