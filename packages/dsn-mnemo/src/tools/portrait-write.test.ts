@@ -38,7 +38,7 @@ test('a group writes the group and a member, not a private portrait', async () =
   const db = openDatabase(':memory:')
   try {
     const tool = createPortraitWriteTool(db, { ownerId: '1', statePath: '/tmp/mnemo-portrait-missing.json' })
-    const exec = execFor('s', [qq('5', '9')])
+    const exec = execFor('s', [qq('1', '9')])
     await tool.execute({ target: 'group', part: 'short', content: '夜猫子多' }, exec)
     await tool.execute({ target: 'member', part: 'long', content: '爱抬杠', member_id: '5', label: '杠精' }, exec)
     assert.equal(readPortrait(db, 'group', '9')?.shortText, '夜猫子多')
@@ -46,6 +46,21 @@ test('a group writes the group and a member, not a private portrait', async () =
     assert.equal(member?.longText, '爱抬杠')
     assert.equal(member?.label, '杠精')
     await assert.rejects(tool.execute({ target: 'person', part: 'long', content: '私聊' }, exec), /群里不写私聊/)
+  } finally {
+    db.close()
+  }
+})
+
+test('a non-owner cannot write a group or member portrait', async () => {
+  const db = openDatabase(':memory:')
+  try {
+    const tool = createPortraitWriteTool(db, { ownerId: '1', statePath: '/tmp/mnemo-portrait-missing.json' })
+    const exec = execFor('s', [qq('5', '9')])
+    await assert.rejects(tool.execute({ target: 'group', part: 'short', content: '群' }, exec), /只有主人/)
+    await assert.rejects(
+      tool.execute({ target: 'member', part: 'short', content: '人', member_id: '5' }, exec),
+      /只有主人/,
+    )
   } finally {
     db.close()
   }

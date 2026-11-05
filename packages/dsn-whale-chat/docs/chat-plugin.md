@@ -127,16 +127,31 @@ trigger:
   group: at                       # 群聊只 @（也可 all / keyword）
   keywords: []                    # group=keyword 时，命中这些词也算在叫她
 
-rate:                             # 私聊入站去抖。其余字段保留兼容，不再参与发送
+rate:                             # 私聊：入站去抖 + 发送节奏
   debounceMs: 2000
+  batchSize: 0                    # 收到这么多条就提前处理（0=只按去抖）
+  cooldownMs: 0                   # 一轮结束后的停顿
+  minGapMs: 1000                  # 两条消息之间的最小间隔
+  maxPerMinute: 15
+  maxPerHour: 200
 
-groupRate:                        # 群聊入站去抖。冷却和每分钟唤醒上限已不再使用
+groupRate:                        # 群聊：同上
   debounceMs: 4000
+  batchSize: 5
+  cooldownMs: 30000
+  minGapMs: 2000
+  maxPerMinute: 8
+  maxPerHour: 80
+
+inbox:
+  maxMessages: 10                 # 待处理列表上限，满了丢最新
 
 replySplit:
   enabled: true
   platformMaxChars: 4500          # 单条超过这个长度才在句末切开
-  replyMaxChars: 800              # 一次回复最多发出这么多字，多出来的不发
+  replyMaxChars: 800              # 提示词里的分段规则：超了由模型自己换行分段，插件不截断
+
+typingStatus: true                # 私聊“正在输入”（NapCat 支持；SnowLuma 可关）
 
 proactive:                        # 闲时主动发言（默认开，风险项），20~120 分钟随机触发
   private: { enabled: true, idleMinMinutes: 20, idleMaxMinutes: 120, maxPerDay: 1 }
@@ -152,6 +167,20 @@ randomInterject:                  # 群聊随机插话（默认开，风险项�
 schedule:
   quietHours: [23, 8]
 ```
+
+## 6.5 兼容 NapCat / SnowLuma
+
+两者都是 OneBot 11，插件协议层不用改，只按下面配：
+
+| 项 | NapCat | SnowLuma |
+|---|---|---|
+| WS 地址 | `ws://127.0.0.1:3001` | 默认也是 `3001`，以它 WebUI 的 OneBot 配置为准 |
+| 鉴权 | `?access_token=` | 同左 |
+| **消息格式** | 必须 `array` | **也必须 `array`**（CQ 码字符串会导致 @ 识别不到） |
+| 私聊“正在输入” | 支持 `set_input_status` | 不一定支持 → 把 `typingStatus` 设为 `false` |
+| 自己发的消息 | `message_sent` 会被忽略 | 同左 |
+
+注意：`@` 的 `qq` 字段 number/string 都能识别；`user_id` / `group_id` 也兼容两种类型。
 
 ## 7. 修改方式（分层）
 

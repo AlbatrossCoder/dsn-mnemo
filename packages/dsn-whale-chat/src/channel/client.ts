@@ -74,12 +74,16 @@ export class OneBotClient {
     this.send('send_group_msg', { group_id: Number(groupId), message: [{ type: 'text', data: { text } }] })
   }
 
-  /** NapCat private-chat typing status. A failure must not block the reply. */
+  /**
+   * Best-effort private-chat typing status (NapCat supports it; SnowLuma and
+   * older backends may not). Failures are ignored on purpose — a typing hint
+   * must never spam the error log or block the reply.
+   */
   setInputStatus(userId: string): void {
     try {
       this.send('set_input_status', { user_id: Number(userId), event_type: 1 })
-    } catch (error) {
-      this.options.onError?.(error)
+    } catch {
+      // Optional capability; ignore.
     }
   }
 

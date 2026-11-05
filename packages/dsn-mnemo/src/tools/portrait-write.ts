@@ -41,6 +41,18 @@ function ownerFromFile(path: string): string {
   }
 }
 
+/** The QQ user of the latest real chat message, used to gate group/member writes. */
+function lastQqUserId(messages: readonly unknown[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index] as { source?: { kind?: unknown; userId?: unknown } } | undefined
+    if (message?.source?.kind !== 'qq') continue
+    if (typeof message.source.userId === 'string' && message.source.userId.length > 0) {
+      return message.source.userId
+    }
+  }
+  return undefined
+}
+
 function limitFor(part: 'long' | 'short', subjectId: string, ownerId: string): number {
   const doubled = ownerId.length > 0 && (subjectId === ownerId || subjectId.endsWith(`:${ownerId}`))
   return (doubled ? OWNER : BASE)[part]
@@ -102,10 +114,20 @@ export function createPortraitWriteTool(db: DatabaseSync, options: PortraitToolO
       const content = args.content.trim()
       if (content.length === 0) throw new Error('画像是空的，没有写入。')
 
+      const configured = options.ownerId?.trim() ?? ''
+      const ownerId = configured.length > 0 ? configured : ownerFromFile(statePath)
+
       let kind: PortraitKind
       let id: string
       if (subject.kind === 'group') {
         if (target === 'person') throw new Error('群里不写私聊画像。')
+        // A group portrait or a member portrait is authority-sensitive: only
+        // the owner may write it, so a random member cannot poison someone
+        // else's stored portrait.
+        const speaker = lastQqUserId(messages)
+        if (ownerId.length === 0 || speaker !== ownerId) {
+          throw new Error('只有主人能写群或群友的画像。')
+        }
         if (target === 'group') {
           kind = 'group'
           id = subject.id
@@ -122,8 +144,6 @@ export function createPortraitWriteTool(db: DatabaseSync, options: PortraitToolO
         throw new Error('私聊里不写群和群友的画像。')
       }
 
-      const configured = options.ownerId?.trim() ?? ''
-      const ownerId = configured.length > 0 ? configured : ownerFromFile(statePath)
       const limit = limitFor(part, id, ownerId)
       if (textLength(content) > limit) throw new Error('画像超了字数上限，没有写入。多出来的可以记进日记。')
 

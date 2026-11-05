@@ -1,9 +1,10 @@
 /**
- * One account-wide send queue.
+ * One serial send queue.
  *
  * Each message waits out its own typing pause, and also the gap and the
- * per-minute / per-hour caps. The pause is the longest of those, not the sum,
- * so a typing wait that is already longer than the gap is not extended.
+ * per-minute / per-hour caps for its kind (dm or group). The pause is the
+ * longest of those, not the sum, so a typing wait that is already longer than
+ * the gap is not extended.
  */
 
 const MINUTE_MS = 60_000

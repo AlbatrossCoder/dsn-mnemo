@@ -3,16 +3,14 @@
  *
  * A newline the model wrote is one message. A fenced code block stays in a
  * single message so its lines are not sent one by one. A single message that
- * exceeds the platform limit is cut on a sentence boundary. The whole reply
- * stops at the send cap; the rest is not sent.
+ * exceeds the platform limit is cut on a sentence boundary. Nothing is dropped
+ * here — a reply over the 800-char guideline is the model's call to split.
  */
 
 export const PLATFORM_MAX_CHARS = 4500
-export const REPLY_MAX_CHARS = 800
 
 export interface SplitOptions {
   readonly platformMaxChars?: number
-  readonly replyMaxChars?: number
 }
 
 /** Short lines wait in this band; longer lines wait in the next one. */
@@ -35,16 +33,15 @@ export function typingDelay(text: string, random: () => number = Math.random): n
 /** Split one reply into the messages that will actually be sent. */
 export function splitReply(text: string, options: SplitOptions = {}): string[] {
   const platform = options.platformMaxChars ?? PLATFORM_MAX_CHARS
-  const replyMax = options.replyMaxChars ?? REPLY_MAX_CHARS
   const trimmed = text.trim()
-  if (trimmed.length === 0 || platform <= 0 || replyMax <= 0) return []
+  if (trimmed.length === 0 || platform <= 0) return []
 
   const pieces: string[] = []
   for (const part of splitPreservingFences(trimmed)) {
     if (part.length <= platform) pieces.push(part)
     else pieces.push(...splitLong(part, platform))
   }
-  return capTotal(pieces, replyMax)
+  return pieces
 }
 
 function splitPreservingFences(text: string): string[] {
@@ -92,23 +89,4 @@ function splitLong(paragraph: string, max: number): string[] {
   }
   if (current.trim().length > 0) chunks.push(current.trim())
   return chunks
-}
-
-function capTotal(chunks: readonly string[], max: number): string[] {
-  const out: string[] = []
-  let used = 0
-  for (const chunk of chunks) {
-    if (used >= max) break
-    if (used + chunk.length <= max) {
-      out.push(chunk)
-      used += chunk.length
-      continue
-    }
-    if (out.length === 0) {
-      const slice = chunk.slice(0, max).trim()
-      if (slice.length > 0) out.push(slice)
-    }
-    break
-  }
-  return out
 }

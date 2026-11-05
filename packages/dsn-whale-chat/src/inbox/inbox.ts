@@ -18,6 +18,10 @@ export function queueStatus(count: number): QueueStatus {
 
 export interface InboxOptions<T> {
   readonly debounceMs: (key: string) => number
+  /** Optional early flush when this many messages piled up (0 = off). */
+  readonly batchSize?: (key: string) => number
+  /** Pause after a finished turn before the next batch is handed over. */
+  readonly cooldownMs?: (key: string) => number
   readonly onFlush: (key: string, messages: readonly T[], status: QueueStatus) => void
   readonly max?: number
   readonly scheduler?: Scheduler
@@ -46,27 +50,41 @@ export class Inbox<T> {
     if (list.length >= this.max) return 'ignored'
     list.push(message)
     this.waiting.set(key, list)
-    if (!this.busy.has(key)) this.arm(key)
+    if (this.busy.has(key)) return 'queued'
+    const batch = this.options.batchSize?.(key) ?? 0
+    if (batch > 0 && list.length >= batch) {
+      this.clearTimer(key)
+      this.flush(key)
+      return 'queued'
+    }
+    this.arm(key, this.options.debounceMs(key))
     return 'queued'
   }
 
-  /** The current turn finished. A remaining list starts the next turn. */
+  /** The current turn finished. A remaining list starts after the cooldown. */
   settle(key: string): void {
     this.busy.delete(key)
-    if ((this.waiting.get(key)?.length ?? 0) > 0) this.flush(key)
+    const list = this.waiting.get(key)
+    if (list === undefined || list.length === 0) return
+    const wait = Math.max(0, this.options.cooldownMs?.(key) ?? 0)
+    if (wait === 0) {
+      this.flush(key)
+      return
+    }
+    this.arm(key, wait)
   }
 
-  /** Drop pending debounce timers. Used when the plugin stops. */
+  /** Drop pending timers. Used when the plugin stops. */
   cancelAll(): void {
     for (const key of [...this.timers.keys()]) this.clearTimer(key)
   }
 
-  private arm(key: string): void {
+  private arm(key: string, ms: number): void {
     this.clearTimer(key)
     const handle = this.scheduler.set(() => {
       this.timers.delete(key)
       if (!this.busy.has(key)) this.flush(key)
-    }, Math.max(0, this.options.debounceMs(key)))
+    }, Math.max(0, ms))
     this.timers.set(key, handle)
   }
 

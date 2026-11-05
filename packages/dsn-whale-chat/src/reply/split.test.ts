@@ -21,9 +21,9 @@ test('a line over the platform limit is cut on a sentence boundary', () => {
   assert.ok(chunks.every((chunk) => chunk.length <= 12))
 })
 
-test('the reply cap drops the rest instead of sending it', () => {
-  const chunks = splitReply('一二三\n四五六\n七八九', { replyMaxChars: 4 })
-  assert.deepEqual(chunks, ['一二三'])
+test('a long reply is not truncated', () => {
+  const chunks = splitReply('一二三\n四五六\n七八九')
+  assert.deepEqual(chunks, ['一二三', '四五六', '七八九'])
 })
 
 test('empty reply yields no messages', () => {
