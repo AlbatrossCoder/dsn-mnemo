@@ -94,6 +94,7 @@ schedule:
 wsUrl: 'ws://127.0.0.1:3001'      # OneBot WS
 accessToken: ''
 statePath: '~/.dsh/whale-chat-state.json'   # 名字/称呼/custom/开关的运行时状态
+balanceCachePath: '~/.dsh/dsh-balance-view/cache.json'   # get_balance 读的缓存（dsh-balance-view 写的）
 provider: ''                      # 可选，空 = 用 DSH 默认路由
 model: ''
 
@@ -181,6 +182,18 @@ schedule:
 | 自己发的消息 | `message_sent` 会被忽略 | 同左 |
 
 注意：`@` 的 `qq` 字段 number/string 都能识别；`user_id` / `group_id` 也兼容两种类型。
+
+## 6.6 余额查询（get_balance）
+
+本插件内置了一个 `get_balance` 工具，**不需要装别的余额插件**：
+
+- 工具内部通过 `ctx.get('deepseekAccount')` 调宿主账号服务的 `getBalance()`；
+- 返回 `total / recharge / bonus / currency / checkedAt`（充值钱包 + 赠金）；
+- 没登录、账号服务没就绪、没有钱包时返回错误，不编数字。
+
+前提：DSH 已登录 DeepSeek 账号（profile 里用了 `deepseek-account` 这个 provider）。
+
+主人私聊问她「查一下余额」，她就会调这个工具报出数字。
 
 ## 7. 修改方式（分层）
 

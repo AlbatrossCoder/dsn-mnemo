@@ -16,6 +16,7 @@ import { Inbox } from './inbox/inbox.js'
 import { BURST_GAP_MS, OutboundQueue, burstSegmentIndex } from './reply/outbound.js'
 import { splitReply, typingDelay } from './reply/split.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
+import { createBalanceTool } from './tools/balance.js'
 import { matchesAny } from './util/text.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
@@ -501,6 +502,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   ctx.tools.register(createPersonaSetTool(state))
   ctx.tools.register(createPersonaSwitchTool(state, personas))
   ctx.tools.register(createPersonaToggleTool(state))
+  ctx.tools.register(createBalanceTool({ ctx }))
 
   try {
     client.start()
