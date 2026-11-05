@@ -94,6 +94,7 @@ schedule:
 wsUrl: 'ws://127.0.0.1:3001'      # OneBot WS
 accessToken: ''
 statePath: '~/.dsh/whale-chat-state.json'   # 名字/称呼/custom/开关的运行时状态
+balanceCachePath: '~/.dsh/dsh-balance-view/cache.json'   # get_balance 读的缓存（dsh-balance-view 写的）
 provider: ''                      # 可选，空 = 用 DSH 默认路由
 model: ''
 
@@ -181,6 +182,25 @@ schedule:
 | 自己发的消息 | `message_sent` 会被忽略 | 同左 |
 
 注意：`@` 的 `qq` 字段 number/string 都能识别；`user_id` / `group_id` 也兼容两种类型。
+
+## 6.6 余额查询（get_balance）
+
+装了余额插件后，本插件会注册一个 `get_balance` 工具：
+
+- 读取 `balanceCachePath` 指向的 `cache.json`（默认 `~/.dsh/dsh-balance-view/cache.json`）；
+- 返回 `total / recharge / bonus / currency / checkedAt`；
+- 缓存由外部插件刷新（约 2 分钟一次），这里只读、不主动请求；
+- 没装、没刷新、没登录时返回错误，不编数字。
+
+推荐搭配 [dsh-balance-view](https://github.com/President-H/dsh-balance-view)：
+
+```bash
+dsh plugin --profile <profile> add @president_h_999/dsh-balance-view
+# 或从本地目录安装
+dsh plugin --profile <profile> add link:<仓库绝对路径>
+```
+
+装好后，主人私聊问她余额，她就能调 `get_balance` 报出数字。
 
 ## 7. 修改方式（分层）
 
