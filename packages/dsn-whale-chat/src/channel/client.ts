@@ -34,6 +34,9 @@ export class OneBotClient {
   private attempt = 0
   private timer: ReturnType<typeof setTimeout> | null = null
   private echo = 0
+  /** Last inbound frame of any kind; a silent socket gets reconnected. */
+  private lastFrameAt = 0
+  private watchdog: ReturnType<typeof setInterval> | null = null
 
   constructor(private readonly options: ClientOptions) {
     this.connect = options.connect ?? webSocketConnect
@@ -47,6 +50,7 @@ export class OneBotClient {
     if (!this.stopped) return
     this.stopped = false
     this.openSocket()
+    this.watchdog = setInterval(() => this.checkAlive(), 30_000)
   }
 
   stop(): void {
@@ -55,9 +59,24 @@ export class OneBotClient {
       clearTimeout(this.timer)
       this.timer = null
     }
+    if (this.watchdog !== null) {
+      clearInterval(this.watchdog)
+      this.watchdog = null
+    }
     this.connection?.close()
     this.connection = null
     this.open = false
+  }
+
+  /**
+   * A half-open socket can keep the TCP connection but stop delivering
+   * messages. If nothing at all arrives for a while, reconnect.
+   */
+  private checkAlive(): void {
+    if (!this.open || this.connection === null) return
+    if (Date.now() - this.lastFrameAt > 90_000) {
+      this.connection.close()
+    }
   }
 
   /** Send a raw OneBot action. Throws when not connected. */
@@ -94,6 +113,7 @@ export class OneBotClient {
         onOpen: () => {
           this.open = true
           this.attempt = 0
+          this.lastFrameAt = Date.now()
         },
         onMessage: (data) => this.handle(data),
         onClose: () => this.handleClose(),
@@ -115,6 +135,7 @@ export class OneBotClient {
   }
 
   private handle(data: string): void {
+    this.lastFrameAt = Date.now()
     const message = parseEvent(data)
     if (message === null) return
     if (!this.isNewMessage(message.messageId)) return
