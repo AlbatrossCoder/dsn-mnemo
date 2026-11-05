@@ -125,6 +125,9 @@ test('mock end-to-end: group message → agent followup → assistant reply → 
     { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '在的。' }] } } },
   )
 
+  // The reply is sent once the turn ends, not on the interim assistant message.
+  assert.equal(replies.length, 0)
+  listeners[0]?.({ id: sessionId }, { type: 'turn/end', data: {} })
   assert.equal(replies.length, 1)
   assert.equal(replies[0]?.text, '在的。')
   assert.equal(replies[0]?.target.kind, 'group')

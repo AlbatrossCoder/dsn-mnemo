@@ -31,27 +31,35 @@ export interface BridgeOptions {
 export class ChatBridge {
   private readonly agents = new Map<string, Agent>()
   private readonly conversations = new Map<SessionId, ChatMessage>()
+  /** Last assistant text of the running turn; sent once, when the turn ends. */
+  private readonly pendingReply = new Map<SessionId, string>()
 
   constructor(private readonly options: BridgeOptions) {
     options.ctx.on('session/event', (session, event) => {
       const target = this.conversations.get(session.id)
       if (target === undefined) return
-      if (event.type === 'turn/end') {
-        this.options.onTurnEnd?.(conversationKey(target))
+      if (event.type === 'assistant/message') {
+        // A turn may produce text before a tool call and again after it. Keep
+        // the last one and send it once, so the pre-tool draft is not also sent.
+        const text = assistantText(event.data.message.content)
+        if (text.length === 0) return
+        this.pendingReply.set(session.id, text)
         return
       }
-      if (event.type !== 'assistant/message') return
-      const text = assistantText(event.data.message.content)
-      if (text.length === 0) return
+      if (event.type !== 'turn/end') return
+      const text = this.pendingReply.get(session.id) ?? ''
+      this.pendingReply.delete(session.id)
       // The idle nudge can be declined; "SILENT" is never sent to QQ.
-      const spoken = text.trim().toUpperCase() !== 'SILENT'
+      const spoken = text.trim().length > 0 && text.trim().toUpperCase() !== 'SILENT'
       this.options.onSpoken?.(conversationKey(target), spoken)
-      if (!spoken) return
-      try {
-        this.options.reply(target, text)
-      } catch (error) {
-        this.options.onError?.(error)
+      if (spoken) {
+        try {
+          this.options.reply(target, text)
+        } catch (error) {
+          this.options.onError?.(error)
+        }
       }
+      this.options.onTurnEnd?.(conversationKey(target))
     })
   }
 

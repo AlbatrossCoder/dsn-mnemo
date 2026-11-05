@@ -68,5 +68,5 @@ export function toInterjectMessage(message: ChatMessage, text: string) {
 
 /** She already spoke; these later lines may continue that topic. Not a chat-log message. */
 export function toFollowMessage(message: ChatMessage, text: string) {
-  return toNudgeMessage(message, `群里接着说了这些：\n${text}\n还是刚才的话题就接着说，换话题了就回 SILENT。`)
+  return toNudgeMessage(message, `群里刚才还说了这些：\n${text}\n有值得说的就说；没有就回 SILENT。`)
 }
