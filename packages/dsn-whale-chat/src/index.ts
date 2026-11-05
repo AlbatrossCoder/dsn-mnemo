@@ -115,13 +115,13 @@ export const Config = z.object({
     private: z.object({
       enabled: z.boolean().default(true),
       idleMinMinutes: z.natural().default(20),
-      idleMaxMinutes: z.natural().default(120),
+      idleMaxMinutes: z.natural().default(200),
       maxPerDay: z.natural().default(1),
     }),
     group: z.object({
-      enabled: z.boolean().default(true),
+      enabled: z.boolean().default(false),
       idleMinMinutes: z.natural().default(20),
-      idleMaxMinutes: z.natural().default(120),
+      idleMaxMinutes: z.natural().default(200),
       maxPerDay: z.natural().default(1),
     }),
   }),

@@ -21,7 +21,7 @@ test('plugin exports shape and default config', () => {
   assert.equal(parsed.replySplit.enabled, true)
   assert.equal(parsed.replySplit.platformMaxChars, 4500)
   assert.equal(parsed.proactive.private.enabled, true)
-  assert.equal(parsed.proactive.group.enabled, true)
+  assert.equal(parsed.proactive.group.enabled, false)
   assert.equal(parsed.randomInterject.enabled, true)
   assert.equal(parsed.randomInterject.windowMinutes, 10)
   assert.equal(parsed.randomInterject.maxPerWindow, 1)

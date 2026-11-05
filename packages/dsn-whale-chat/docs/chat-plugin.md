@@ -153,9 +153,9 @@ replySplit:
 
 typingStatus: true                # 私聊“正在输入”（NapCat 支持；SnowLuma 可关）
 
-proactive:                        # 闲时主动发言（默认开，风险项），20~120 分钟随机触发
-  private: { enabled: true, idleMinMinutes: 20, idleMaxMinutes: 120, maxPerDay: 1 }
-  group:   { enabled: true, idleMinMinutes: 20, idleMaxMinutes: 120, maxPerDay: 1 }
+proactive:                        # 闲时主动：私聊默认开，群聊默认关；20~200 分钟随机
+  private: { enabled: true,  idleMinMinutes: 20, idleMaxMinutes: 200, maxPerDay: 1 }
+  group:   { enabled: false, idleMinMinutes: 20, idleMaxMinutes: 200, maxPerDay: 1 }
 
 randomInterject:                  # 群聊随机插话（默认开，风险项）
   enabled: true
@@ -236,7 +236,7 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 3. `activeHours` 先不做正式配置。
 4. 新增人格只改源码（`personas.ts`）。
 5. 私聊、群聊各自去抖后交给她处理；发送额度按全账号的 QQ 条数算，不再按唤醒次数冷却。
-6. 闲时主动默认关；随机插话设计但默认关。
+6. 闲时主动：私聊默认开（20~200 分钟随机），群聊默认关；随机插话默认开。
 7. 四个开关（暴躁鲸鱼 / 小黄鱼 / 颜文字 / 贴吧喷子）**默认全关**；隐藏卡关闭时不注入。
 8. 黄腔 / 荤段子 / 好色属于小黄鱼开关，归小鲸鱼的隐藏层。
 
