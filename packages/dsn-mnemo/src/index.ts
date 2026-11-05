@@ -8,14 +8,16 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { openDatabase } from './db/database.js'
 import { createPendingDiaryText } from './diary/pending.js'
+import { createPortraitText } from './inject/portrait.js'
 import { createProactiveText } from './inject/proactive.js'
 import { formatDate, renderAnchorLines, renderStablePrefix } from './inject/stable-prefix.js'
 import { SessionRecorder } from './session/recorder.js'
 import { anchorsInWindow, markAnchorFired } from './store/anchor-store.js'
-import { sessionSubject } from './store/message-store.js'
+import { sessionSubject, subjectFromMessages } from './store/message-store.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
 import { createForgetTool } from './tools/forget.js'
+import { createPortraitWriteTool } from './tools/portrait-write.js'
 import { createRecallTool } from './tools/recall.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
@@ -43,11 +45,13 @@ export const Config = z.object({
   contextRecallTokens: z.natural().default(600),
   recallDiaryLimit: z.natural().default(5),
   recallLogLimit: z.natural().default(5),
+  /** QQ of the owner. Empty reads `~/.dsh/whale-chat-state.json` when a portrait is written. */
+  ownerId: z.string().default(''),
 })
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.7.1'
+const VERSION = '0.8.0'
 
 /**
  * Record a failure where a human can find it. The loader reports plugin
@@ -133,6 +137,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
   ctx.tools.register(createDiaryWriteTool(db))
   ctx.tools.register(createDiaryUpdateTool(db))
   ctx.tools.register(createForgetTool(db))
+  ctx.tools.register(createPortraitWriteTool(db, { ownerId: config.ownerId }))
 
   // Dynamic context: proactive recall + a pending-diary hint, both replaced
   // every turn (never accumulated) and living outside the cached stable prefix.
@@ -140,6 +145,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
     limit: config.contextRecallLimit,
     tokenBudget: config.contextRecallTokens,
   })
+  const portraits = createPortraitText(db)
   const pending = createPendingDiaryText(db, {
     idleMs: config.diaryIdleMinutes * 60_000,
     maxTurns: config.diaryMaxTurns,
@@ -147,6 +153,12 @@ function setup(ctx: Context, config: MnemoConfig): void {
   })
 
   ctx.on('agent/created', ({ agent }: { agent: Agent }) => {
+    agent.ctx.systemPrompt.context({
+      name: 'mnemo:portrait',
+      order: 38,
+      interpolate: false,
+      text: () => portraits(agent.session),
+    })
     agent.ctx.systemPrompt.context({
       name: 'mnemo:recall',
       order: 40,
@@ -159,7 +171,7 @@ function setup(ctx: Context, config: MnemoConfig): void {
       order: 35,
       interpolate: false,
       text: () => {
-        const subject = sessionSubject(db, agent.session.id)
+        const subject = subjectFromMessages(agent.session.deriveMessages()) ?? sessionSubject(db, agent.session.id)
         const today = formatDate(new Date())
         const due = anchorsInWindow(db, subject, today, config.anchorWindowDays).filter(
           (anchor) => anchor.lastFiredOn !== today && anchor.handledAt === null,

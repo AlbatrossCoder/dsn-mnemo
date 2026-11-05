@@ -74,6 +74,15 @@ export class OneBotClient {
     this.send('send_group_msg', { group_id: Number(groupId), message: [{ type: 'text', data: { text } }] })
   }
 
+  /** NapCat private-chat typing status. A failure must not block the reply. */
+  setInputStatus(userId: string): void {
+    try {
+      this.send('set_input_status', { user_id: Number(userId), event_type: 1 })
+    } catch (error) {
+      this.options.onError?.(error)
+    }
+  }
+
   private openSocket(): void {
     if (this.stopped) return
     try {

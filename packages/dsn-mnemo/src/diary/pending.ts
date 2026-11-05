@@ -10,6 +10,7 @@
  * @module dsn-mnemo/diary/pending
  */
 import type { DatabaseSync } from 'node:sqlite'
+import { DIARY_GUIDANCE } from '../inject/stable-prefix.js'
 
 /** The slice of a Session this module needs. */
 export interface PendingSession {
@@ -125,5 +126,5 @@ function compute(db: DatabaseSync, sessionId: string, options: PendingOptions, n
   // Mark before returning so the same stretch is not re-flagged every message.
   db.prepare("update sessions set diary_judged_at = datetime('now') where id = ?").run(sessionId)
 
-  return `之前有一段对话（约 ${turns} 条消息）还没有沉淀成日记。请像写日记一样，把其中值得记住的内容用 diary_write 记下来（做了什么、聊了什么、做了什么决定都算，日常琐事也可以）；没有值得记的就忽略，不要向用户解释这套机制。`
+  return `之前有一段对话（约 ${turns} 条消息）还没有沉淀成日记。用 diary_write 记。${DIARY_GUIDANCE}`
 }

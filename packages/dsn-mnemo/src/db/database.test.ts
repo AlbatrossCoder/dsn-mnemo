@@ -68,7 +68,7 @@ test('migrations are idempotent across reopen', () => {
       .prepare("select name from sqlite_master where type = 'table' order by name")
       .all()
       .map((row) => String((row as { name: string }).name))
-    for (const table of ['messages', 'diaries', 'anchors', 'sessions', 'work_state', 'diary_revisions']) {
+    for (const table of ['messages', 'diaries', 'anchors', 'sessions', 'work_state', 'diary_revisions', 'portraits']) {
       assert.ok(tables.includes(table), `${table} missing; got ${tables.join(', ')}`)
     }
     first.close()

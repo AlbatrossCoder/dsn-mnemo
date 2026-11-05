@@ -1,69 +1,78 @@
 /**
- * Split one model reply into several QQ messages **only when it is too long**.
+ * Turn one model reply into QQ messages.
  *
- * 20/30 chars is a cap, not a target: a one-word reply stays one message. A
- * `【长】` marker or a fenced code block means "special scenario, no char
- * limit": the answer is sent whole.
+ * A newline the model wrote is one message. A fenced code block stays in a
+ * single message so its lines are not sent one by one. A single message that
+ * exceeds the platform limit is cut on a sentence boundary. The whole reply
+ * stops at the send cap; the rest is not sent.
  */
 
-export interface ReplySplitOptions {
-  readonly groupMaxChars: number
-  readonly privateMaxChars: number
+export const PLATFORM_MAX_CHARS = 4500
+export const REPLY_MAX_CHARS = 800
+
+export interface SplitOptions {
+  readonly platformMaxChars?: number
+  readonly replyMaxChars?: number
 }
 
-/** How long a human would plausibly take to type/send the next message. */
-export interface TypingDelayOptions {
-  /** Estimated milliseconds per character. */
-  readonly msPerChar: number
-  readonly minMs: number
-  readonly maxMs: number
-  /** Extra uniform random upper bound added on top of the estimate. */
-  readonly jitterMs: number
-}
+/** Short lines wait in this band; longer lines wait in the next one. */
+const SHORT_CHARS = 20
 
 /**
- * Estimate the gap before the next message: typing time by length, clamped,
- * plus a random jitter. No fixed interval — successive gaps vary.
+ * Per-message pause before that message is sent.
+ *
+ * Short text lands between 1.5s and 2.5s. Longer text lands between 2.5s and
+ * 4s. The length only picks the band.
  */
-export function typingDelay(text: string, options: TypingDelayOptions, random: () => number = Math.random): number {
-  const estimated = text.length * options.msPerChar
-  const base = Math.min(options.maxMs, Math.max(options.minMs, estimated))
-  const jitter = Math.floor(random() * Math.max(0, options.jitterMs))
-  return base + jitter
+export function typingDelay(text: string, random: () => number = Math.random): number {
+  const short = text.length <= SHORT_CHARS
+  const min = short ? 1500 : 2500
+  const max = short ? 2500 : 4000
+  const span = max - min
+  return min + Math.floor(Math.max(0, Math.min(0.999999, random())) * (span + 1))
 }
 
-const LONG_MARKER = '【长】'
-
-export function splitReply(text: string, kind: 'group' | 'dm', options: ReplySplitOptions): string[] {
+/** Split one reply into the messages that will actually be sent. */
+export function splitReply(text: string, options: SplitOptions = {}): string[] {
+  const platform = options.platformMaxChars ?? PLATFORM_MAX_CHARS
+  const replyMax = options.replyMaxChars ?? REPLY_MAX_CHARS
   const trimmed = text.trim()
-  if (trimmed.length === 0) return []
+  if (trimmed.length === 0 || platform <= 0 || replyMax <= 0) return []
 
-  const longForm = trimmed.startsWith(LONG_MARKER) || trimmed.includes('```')
-  if (longForm) {
-    const body = trimmed.startsWith(LONG_MARKER) ? trimmed.slice(LONG_MARKER.length).trim() : trimmed
-    return body.length > 0 ? [body] : []
+  const pieces: string[] = []
+  for (const part of splitPreservingFences(trimmed)) {
+    if (part.length <= platform) pieces.push(part)
+    else pieces.push(...splitLong(part, platform))
   }
+  return capTotal(pieces, replyMax)
+}
 
-  const max = kind === 'group' ? options.groupMaxChars : options.privateMaxChars
-  const chunks: string[] = []
-  // Every newline is a message boundary the model chose; the char cap only
-  // guards a single over-long line.
-  for (const paragraph of trimmed.split(/\n/)) {
-    const clean = paragraph.trim()
-    if (clean.length === 0) continue
-    if (clean.length <= max) {
-      chunks.push(clean)
-      continue
-    }
-    chunks.push(...splitLong(clean, max))
+function splitPreservingFences(text: string): string[] {
+  const parts: string[] = []
+  const re = /```[\s\S]*?```/g
+  let last = 0
+  for (const match of text.matchAll(re)) {
+    const index = match.index ?? 0
+    parts.push(...splitLines(text.slice(last, index)))
+    const block = match[0].trim()
+    if (block.length > 0) parts.push(block)
+    last = index + match[0].length
   }
-  return chunks
+  parts.push(...splitLines(text.slice(last)))
+  return parts
+}
+
+function splitLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
 }
 
 function splitLong(paragraph: string, max: number): string[] {
   const chunks: string[] = []
   let current = ''
-  const sentences = paragraph.split(/(?<=[。！？!?；;…\n])/)
+  const sentences = paragraph.split(/(?<=[。！？!?；;…])/)
   for (const sentence of sentences) {
     if (sentence.length === 0) continue
     if (current.length + sentence.length <= max) {
@@ -77,9 +86,29 @@ function splitLong(paragraph: string, max: number): string[] {
       continue
     }
     for (let index = 0; index < sentence.length; index += max) {
-      chunks.push(sentence.slice(index, index + max).trim())
+      const slice = sentence.slice(index, index + max).trim()
+      if (slice.length > 0) chunks.push(slice)
     }
   }
   if (current.trim().length > 0) chunks.push(current.trim())
-  return chunks.filter((chunk) => chunk.length > 0)
+  return chunks
+}
+
+function capTotal(chunks: readonly string[], max: number): string[] {
+  const out: string[] = []
+  let used = 0
+  for (const chunk of chunks) {
+    if (used >= max) break
+    if (used + chunk.length <= max) {
+      out.push(chunk)
+      used += chunk.length
+      continue
+    }
+    if (out.length === 0) {
+      const slice = chunk.slice(0, max).trim()
+      if (slice.length > 0) out.push(slice)
+    }
+    break
+  }
+  return out
 }

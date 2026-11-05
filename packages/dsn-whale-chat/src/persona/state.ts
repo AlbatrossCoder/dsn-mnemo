@@ -27,38 +27,72 @@ export interface StateStore {
   reset(): PersonaState
 }
 
+/** Stable identity of the operator-owned fields. A change means the config file won. */
+export function configFingerprint(state: Pick<PersonaState, 'ownerId' | 'addressUser' | 'activeId' | 'toggles'>): string {
+  return JSON.stringify({
+    ownerId: state.ownerId,
+    addressUser: state.addressUser,
+    activeId: state.activeId,
+    toggles: state.toggles,
+  })
+}
+
 function clone(state: PersonaState): PersonaState {
   return { ...state, toggles: { ...state.toggles } }
 }
 
-function load(path: string, defaults: PersonaState): PersonaState {
+interface StoredState extends Partial<PersonaState> {
+  configFingerprint?: string
+}
+
+function load(path: string, defaults: PersonaState): { state: PersonaState; fingerprint: string | undefined } {
   try {
-    if (!existsSync(path)) return clone(defaults)
-    const parsed = JSON.parse(readFileSync(path, 'utf8')) as Partial<PersonaState>
+    if (!existsSync(path)) return { state: clone(defaults), fingerprint: undefined }
+    const parsed = JSON.parse(readFileSync(path, 'utf8')) as StoredState
     return {
-      activeId: parsed.activeId ?? defaults.activeId,
-      name: parsed.name ?? defaults.name,
-      addressUser: parsed.addressUser ?? defaults.addressUser,
-      custom: parsed.custom ?? defaults.custom,
-      ownerId: parsed.ownerId ?? defaults.ownerId,
-      addressPending: parsed.addressPending ?? defaults.addressPending,
-      toggles: { ...defaults.toggles, ...(parsed.toggles ?? {}) },
+      state: {
+        activeId: parsed.activeId ?? defaults.activeId,
+        name: parsed.name ?? defaults.name,
+        addressUser: parsed.addressUser ?? defaults.addressUser,
+        custom: parsed.custom ?? defaults.custom,
+        ownerId: parsed.ownerId ?? defaults.ownerId,
+        addressPending: parsed.addressPending ?? defaults.addressPending,
+        toggles: { ...defaults.toggles, ...(parsed.toggles ?? {}) },
+      },
+      fingerprint: typeof parsed.configFingerprint === 'string' ? parsed.configFingerprint : undefined,
     }
   } catch {
-    return clone(defaults)
+    return { state: clone(defaults), fingerprint: undefined }
   }
 }
 
-export function createStateStore(path: string, defaults: PersonaState): StateStore {
-  let state = load(path, defaults)
+export function createStateStore(path: string, defaults: PersonaState, fingerprint?: string): StateStore {
+  const loaded = load(path, defaults)
+  let state = loaded.state
+  if (fingerprint !== undefined && loaded.fingerprint !== undefined && loaded.fingerprint !== fingerprint) {
+    state = {
+      ...state,
+      activeId: defaults.activeId,
+      name: defaults.name,
+      addressUser: defaults.addressUser,
+      ownerId: defaults.ownerId,
+      toggles: { ...defaults.toggles },
+      addressPending: defaults.ownerId.length > 0 ? false : state.addressPending,
+    }
+  }
 
   const persist = (next: PersonaState): void => {
     try {
       mkdirSync(dirname(path), { recursive: true })
-      writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`, 'utf8')
+      const body = fingerprint === undefined ? next : { ...next, configFingerprint: fingerprint }
+      writeFileSync(path, `${JSON.stringify(body, null, 2)}\n`, 'utf8')
     } catch {
       // Personalization is best-effort; a read-only home must not crash the bot.
     }
+  }
+
+  if (fingerprint !== undefined && loaded.fingerprint !== fingerprint) {
+    persist(state)
   }
 
   const store: StateStore = {

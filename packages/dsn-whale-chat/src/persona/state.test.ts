@@ -3,7 +3,7 @@ import test from 'node:test'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createStateStore } from './state.js'
+import { configFingerprint, createStateStore } from './state.js'
 
 const defaults = {
   activeId: 'little-whale',
@@ -35,6 +35,24 @@ test('state store defaults, update, reset and persistence', () => {
     const reset = store.reset()
     assert.equal(reset.addressUser, '哥哥')
     assert.equal(reset.toggles.troll, false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('a changed config fingerprint replaces operator fields and keeps the rest', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'whale-chat-state-'))
+  try {
+    const path = join(dir, 'state.json')
+    const first = configFingerprint(defaults)
+    const store = createStateStore(path, defaults, first)
+    store.update({ addressUser: '主人', custom: '保留', ownerId: '42' })
+
+    const nextDefaults = { ...defaults, addressUser: '老板', ownerId: '99', toggles: { ...defaults.toggles } }
+    const reloaded = createStateStore(path, nextDefaults, configFingerprint(nextDefaults))
+    assert.equal(reloaded.get().addressUser, '老板')
+    assert.equal(reloaded.get().ownerId, '99')
+    assert.equal(reloaded.get().custom, '保留')
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }

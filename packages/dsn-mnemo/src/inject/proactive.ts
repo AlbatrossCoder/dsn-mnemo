@@ -16,8 +16,8 @@
  * @module dsn-mnemo/inject/proactive
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { searchDiaries } from '../store/diary-store.js'
-import { sessionSubject } from '../store/message-store.js'
+import { recentDiaries, searchDiaries } from '../store/diary-store.js'
+import { sessionSubject, subjectFromMessages } from '../store/message-store.js'
 import { estimateTokens, rankDiaryHits, type RecallHit } from '../tools/recall.js'
 import { buildProactiveQuery, type WindowMessage } from './window.js'
 
@@ -51,7 +51,7 @@ export function renderProactive(hits: readonly RecallHit[]): string {
   if (hits.length === 0) return ''
   const lines = hits.map((hit) => `- ${hit.when.slice(0, 10)} ${clip(hit.text)}`)
   return [
-    '以下是从长期记忆里浮现的内容，可能与当前对话有关（自然地使用，不要逐字复述，也不要声称这是用户刚说的）：',
+    '以下是从长期记忆里浮现的内容，不是对方刚刚说的：',
     ...lines,
   ].join('\n')
 }
@@ -112,10 +112,20 @@ export function createProactiveText(
     const turnIndex = previous === undefined || previous.lastId !== lastId ? (previous?.index ?? 0) + 1 : previous.index
     turns.set(session.id, { lastId, index: turnIndex })
 
-    const subject = sessionSubject(db, session.id)
+    const subject = subjectFromMessages(messages) ?? sessionSubject(db, session.id)
     const query = buildProactiveQuery(messages, { maxMessages: 16, maxChars: 300 })
     let text = ''
-    if (query.tokens.length >= 2) {
+    if (turnIndex <= 2) {
+      const hits = recentDiaries(db, subject, Math.min(5, options.limit)).map((hit) => ({
+        source: 'diary' as const,
+        id: hit.id,
+        text: hit.content,
+        score: 1,
+        when: hit.createdAt,
+      }))
+      const capped = capHits(hits, Math.min(5, options.limit), tokenBudget)
+      if (capped.length > 0) text = renderProactive(capped)
+    } else if (query.tokens.length >= 2) {
       const at = now()
       const diaryHits = searchDiaries(db, query.text, options.limit * 2, 'or', subject).filter(
         // Auto-injection in a group is public-only.

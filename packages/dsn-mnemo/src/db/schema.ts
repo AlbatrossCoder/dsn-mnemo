@@ -230,8 +230,24 @@ drop table if exists memory_points_fts;
 drop table if exists memory_points;
 `
 
+/**
+ * V5: one current portrait per subject. Long-term and short-term text are
+ * rewritten in place. `member` ids are `groupId:userId`.
+ */
+const V5 = `
+create table portraits (
+  subject_kind text not null,
+  subject_id text not null,
+  label text not null default '',
+  long_text text not null default '',
+  short_text text not null default '',
+  updated_at text not null default (datetime('now')),
+  primary key (subject_kind, subject_id)
+);
+`
+
 /** Every migration in application order. Append only; never edit a released entry. */
-export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4]
+export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5]
 
 /** Highest schema version this build understands. */
 export const SCHEMA_VERSION = MIGRATIONS.length

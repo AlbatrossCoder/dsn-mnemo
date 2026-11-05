@@ -1,0 +1,89 @@
+/**
+ * One inbound list per conversation.
+ *
+ * While idle, messages debounce into a single turn and leave the list as
+ * "being handled". Messages that arrive after that stay unhandled until the
+ * turn ends. A full list drops new messages and keeps what is already there.
+ */
+import { realScheduler, type Scheduler } from '../util/scheduler.js'
+
+export type QueueStatus = '正常' | '加急' | '堆积'
+
+/** Status of the batch about to be handed to one turn. */
+export function queueStatus(count: number): QueueStatus {
+  if (count < 3) return '正常'
+  if (count <= 5) return '加急'
+  return '堆积'
+}
+
+export interface InboxOptions<T> {
+  readonly debounceMs: (key: string) => number
+  readonly onFlush: (key: string, messages: readonly T[], status: QueueStatus) => void
+  readonly max?: number
+  readonly scheduler?: Scheduler
+}
+
+export class Inbox<T> {
+  private readonly waiting = new Map<string, T[]>()
+  private readonly busy = new Set<string>()
+  private readonly timers = new Map<string, unknown>()
+  private readonly scheduler: Scheduler
+  private readonly max: number
+
+  constructor(private readonly options: InboxOptions<T>) {
+    this.scheduler = options.scheduler ?? realScheduler
+    this.max = options.max ?? 10
+  }
+
+  /** True while a turn is running or unhandled messages are still queued. */
+  blocksIdle(key: string): boolean {
+    return this.busy.has(key) || (this.waiting.get(key)?.length ?? 0) > 0
+  }
+
+  /** Accept one message, or ignore it when the list is already full. */
+  offer(key: string, message: T): 'queued' | 'ignored' {
+    const list = this.waiting.get(key) ?? []
+    if (list.length >= this.max) return 'ignored'
+    list.push(message)
+    this.waiting.set(key, list)
+    if (!this.busy.has(key)) this.arm(key)
+    return 'queued'
+  }
+
+  /** The current turn finished. A remaining list starts the next turn. */
+  settle(key: string): void {
+    this.busy.delete(key)
+    if ((this.waiting.get(key)?.length ?? 0) > 0) this.flush(key)
+  }
+
+  /** Drop pending debounce timers. Used when the plugin stops. */
+  cancelAll(): void {
+    for (const key of [...this.timers.keys()]) this.clearTimer(key)
+  }
+
+  private arm(key: string): void {
+    this.clearTimer(key)
+    const handle = this.scheduler.set(() => {
+      this.timers.delete(key)
+      if (!this.busy.has(key)) this.flush(key)
+    }, Math.max(0, this.options.debounceMs(key)))
+    this.timers.set(key, handle)
+  }
+
+  private flush(key: string): void {
+    if (this.busy.has(key)) return
+    const list = this.waiting.get(key)
+    if (list === undefined || list.length === 0) return
+    this.waiting.delete(key)
+    this.clearTimer(key)
+    this.busy.add(key)
+    this.options.onFlush(key, list, queueStatus(list.length))
+  }
+
+  private clearTimer(key: string): void {
+    const handle = this.timers.get(key)
+    if (handle === undefined) return
+    this.scheduler.clear(handle)
+    this.timers.delete(key)
+  }
+}

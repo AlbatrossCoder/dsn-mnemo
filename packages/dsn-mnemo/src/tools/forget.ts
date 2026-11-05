@@ -9,6 +9,7 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
+import { deletePortraitsForGroup, deletePortraitsForUser } from '../store/portrait-store.js'
 
 interface ForgotCounts {
   messages: number
@@ -16,6 +17,7 @@ interface ForgotCounts {
   diaries: number
   anchors: number
   persons: number
+  portraits: number
 }
 
 function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCounts {
@@ -33,6 +35,7 @@ function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCou
       diaries: 0,
       anchors: 0,
       persons: 0,
+      portraits: 0,
     }
 
     for (const sessionId of sessionIds) {
@@ -46,6 +49,9 @@ function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCou
     )
     if (kind === 'user') {
       counts.persons = Number(db.prepare('delete from persons where user_id = ?').run(id).changes)
+      counts.portraits = deletePortraitsForUser(db, id)
+    } else {
+      counts.portraits = deletePortraitsForGroup(db, id)
     }
     for (const sessionId of sessionIds) {
       counts.sessions += Number(db.prepare('delete from sessions where id = ?').run(sessionId).changes)
@@ -86,6 +92,7 @@ export function createForgetTool(db: DatabaseSync) {
           diaries: { type: 'number' },
           anchors: { type: 'number' },
           persons: { type: 'number' },
+          portraits: { type: 'number' },
         },
         additionalProperties: false,
       },

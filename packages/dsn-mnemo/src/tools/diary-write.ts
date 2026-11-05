@@ -10,6 +10,7 @@
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
 import { segment } from '../db/segment.js'
+import { DIARY_GUIDANCE } from '../inject/stable-prefix.js'
 import { insertDiary } from '../store/diary-store.js'
 import { sessionSubject } from '../store/message-store.js'
 
@@ -22,8 +23,7 @@ interface ExistingDiary {
 export function createDiaryWriteTool(db: DatabaseSync) {
   return defineTool({
     name: 'diary_write',
-    description:
-      '像写日记一样，把这一轮里值得记住的内容记下来——做了什么、吃了什么、去了哪里、聊了什么、做了什么决定，日常流水账也算；记什么、写多长由你判断，没有条数限制。',
+    description: DIARY_GUIDANCE,
     parameters: {
       content: {
         type: 'string',

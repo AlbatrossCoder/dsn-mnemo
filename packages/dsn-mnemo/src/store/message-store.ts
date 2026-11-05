@@ -77,6 +77,24 @@ export function touchSession(
   ).run(sessionId, turn, identity.kind, identity.audienceId)
 }
 
+/**
+ * Subject of the latest QQ message in the live context.
+ *
+ * The session row is written when that message is recorded, which can be
+ * after the prompt is assembled. A QQ source wins over a missing or `local` row.
+ */
+export function subjectFromMessages(messages: readonly unknown[]): { kind: 'user' | 'group'; id: string } | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (typeof message !== 'object' || message === null) continue
+    const source = (message as { source?: { kind?: unknown; userId?: unknown; groupId?: unknown } }).source
+    if (source?.kind !== 'qq') continue
+    if (typeof source.groupId === 'string' && source.groupId.length > 0) return { kind: 'group', id: source.groupId }
+    if (typeof source.userId === 'string' && source.userId.length > 0) return { kind: 'user', id: source.userId }
+  }
+  return undefined
+}
+
 /** Conversation identity carried by a session row. */
 export function sessionSubject(db: DatabaseSync, sessionId: string): { kind: 'user' | 'group'; id: string } {
   const row = db.prepare('select kind, audience_id from sessions where id = ?').get(sessionId) as

@@ -227,3 +227,18 @@ export function searchDiariesByMatch(
 
   return rows.map((row) => toHit(row))
 }
+
+/** Newest diaries for one subject. Group rows are public-only. */
+export function recentDiaries(db: DatabaseSync, subject: SubjectRef, limit: number): DiaryHit[] {
+  const visibility = subject.kind === 'group' ? "and visibility = 'public'" : ''
+  const rows = db
+    .prepare(
+      `select id, content, importance, emotion, type_tags, subject_kind, subject_id, visibility, created_at, 0 as rank
+         from diaries
+        where subject_kind = ? and subject_id = ? ${visibility}
+        order by created_at desc, id desc
+        limit ?`,
+    )
+    .all(subject.kind, subject.id, limit) as unknown as DiaryRow[]
+  return rows.map((row) => toHit(row))
+}

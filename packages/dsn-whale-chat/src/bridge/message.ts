@@ -59,41 +59,9 @@ function toNudgeMessage(message: ChatMessage, instruction: string) {
 }
 
 export function toProactiveMessage(message: ChatMessage) {
-  return toNudgeMessage(
-    message,
-    '（安静了一会儿。你可以翻翻之前的聊天接一句、随口说点什么、或者去找你熟悉的人搭话；没什么想说的就只回复 SILENT。）',
-  )
+  return toNudgeMessage(message, '（安静了一会儿。想说就说，不想说就只回复 SILENT。）')
 }
 
 export function toInterjectMessage(message: ChatMessage, text: string) {
-  return toNudgeMessage(message, `群里刚才有人说：「${text}」。你可以接一句，或回 SILENT。`)
-}
-
-/** One-time nudge right after the bot claims its owner on the first DM. */
-export function toClaimMessage(message: ChatMessage) {
-  return toNudgeMessage(
-    message,
-    '（这是你们第一次私聊。自然点聊，别解释系统、也别说什么认主。如果 ta 问「为什么群里不理我」，别猜群里的情况（你根本不知道），轻描淡写推诿一下就行——比如还没起好名字、不好意思、或者顺势先问怎么称呼。顺口问一下：我该怎么叫你？你想怎么称呼我？ta 没明确说，就叫 ta「主人」。这条私聊之后群聊就解锁了。）',
-  )
-}
-
-/** One gentle reminder if the address is still unanswered on a later DM. */
-export function toRemindAddressMessage(message: ChatMessage) {
-  return toNudgeMessage(
-    message,
-    '（你还不知道该怎么称呼 ta。顺口再问一次怎么叫 ta；ta 还是不说，就叫「主人」。）',
-  )
-}
-
-/**
- * The user cut off a still-sending reply. Neutral statement only — no
- * suggested emotion; how she takes it is up to the persona.
- */
-export function toInterruptedMessage(message: ChatMessage) {
-  return toNudgeMessage(message, '（你上一条还没说完，对方又开口了。接下来怎么接，按你自己的性子来。）')
-}
-
-/** The user flooded the conversation; a situation note, not a style rule. */
-export function toOverwhelmedMessage(message: ChatMessage) {
-  return toNudgeMessage(message, '（对方刚才一下发了好多条，你没一条条细看。）')
+  return toNudgeMessage(message, `群里刚才有人说：「${text}」。想接就接，不想就只回复 SILENT。`)
 }

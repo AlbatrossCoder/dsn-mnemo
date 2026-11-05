@@ -62,31 +62,19 @@
 
 | 层 | 内容 | 位置 |
 |---|---|---|
-| `whale:persona` | 身份 / 说话样子 / 具体细节 / 反应 / 语气样本 / 隐藏层 | 全局稳定前缀 |
-| `whale:policy` | 禁 AI 腔、不解释系统、事实优先、报错、分条 | 全局稳定前缀 |
-| `whale:channel` | 群聊超 20 字才拆 / 私聊超 30 字才拆 / 长文本不分条 | 每 agent（按会话类型） |
+| `whale:persona` | 人物背景（来历 / 生活 / 身体 / 性格 / 在意 / 关系）和已打开的隐藏层 | 全局稳定前缀 |
+| `whale:policy` | 规则本身、不解释系统、不确定就说不确定、只有主人能改人设和开关 | 全局稳定前缀 |
+| `whale:channel` | 群还是私聊、换行会分成多条、主人是谁、这一轮的消息状况 | 每 agent |
 
-**人设卡结构**（`personas.ts`）：
-
-```
-【你是谁】…
-【说话】…
-【具体】…（3~5 个具体细节，不要抽象形容词）
-【反应】…（被夸/被骂/被冷落/被逗，各一句倾向，不写台词）
-```
-
-外加 `samples`：3~4 段短对话，标注「体会分寸，不要照抄」。隐藏层同样是「语气切换 + 样本 + 分寸」。
+人物背景只写事实，不写台词样本。隐藏层只有对应开关打开才注入。
 
 **为什么这样拆**：角色和工程规矩混在一起，模型会「执行规格」而不是「扮演」，容易出 AI 腔；规矩单独成段，人设只负责口吻。
 
 ## 4. 通用约定（两个人格都遵守）
 
-- 事实优先，不编造。
-- 卖萌/调侃不影响干活质量。
-- 报错先道歉/给方案，不糊弄。
-- 不主动解释记忆等系统机制。
-- 回复长度跟场景走。
-- 对方生气、情绪不对、或遇到严肃 / 特殊场景时，收敛一点。
+- 不确定就说不确定，不编造。
+- 不解释记忆、系统和插件。
+- 只有主人能改人设和开关。
 
 ## 5. 时段控制
 
@@ -139,28 +127,16 @@ trigger:
   group: at                       # 群聊只 @（也可 all / keyword）
   keywords: []                    # group=keyword 时，命中这些词也算在叫她
 
-rate:                             # 私聊：无冷却、有去抖
-  debounceMs: 3000
-  batchSize: 0
-  cooldownMs: 0
-  maxPerMinute: 20
+rate:                             # 私聊入站去抖。其余字段保留兼容，不再参与发送
+  debounceMs: 2000
 
-groupRate:                        # 群聊：合并 + 冷却 + 限额
-  debounceMs: 5000
-  batchSize: 5
-  cooldownMs: 30000
-  maxPerMinute: 3
-  maxPerHour: 60
+groupRate:                        # 群聊入站去抖。冷却和每分钟唤醒上限已不再使用
+  debounceMs: 4000
 
-replySplit:                       # 过长才分条（默认开；短回复就一条）
+replySplit:
   enabled: true
-  groupMaxChars: 20               # 群聊单条上限（超了才拆）
-  privateMaxChars: 30             # 私聊单条上限（超了才拆）
-  msPerChar: 120                  # 按字数估算「打字」间隔
-  minDelayMs: 400
-  maxDelayMs: 4000
-  jitterMs: 800                   # 额外随机抖动（防固定节奏）
-  # 【长】/ 代码块 = 特殊场景：整条发，不分段、不限字数
+  platformMaxChars: 4500          # 单条超过这个长度才在句末切开
+  replyMaxChars: 800              # 一次回复最多发出这么多字，多出来的不发
 
 proactive:                        # 闲时主动发言（默认开，风险项），20~120 分钟随机触发
   private: { enabled: true, idleMinMinutes: 20, idleMaxMinutes: 120, maxPerDay: 1 }
@@ -171,7 +147,7 @@ randomInterject:                  # 群聊随机插话（默认开，风险项�
   probability: 0.05
   minMessagesBetween: 20
   windowMinutes: 10               # 统计窗口
-  maxPerWindow: 3                  # 每 10 分钟最多插 3 次
+  maxPerWindow: 1                  # 每 10 分钟最多插 1 次，且只发 1 条
 
 schedule:
   quietHours: [23, 8]
@@ -197,8 +173,9 @@ QQ ──OneBot WS──▶ dsn-whale-chat
                      ├─ channel    OneBot 连接 / 去重 / @ 判定 / 回发 / 重连
                      ├─ persona    基础卡 + 隐藏卡按开关拼装、稳定前缀注入
                      │              persona_set / switch_persona / persona_toggle
-                     ├─ rate       触发 → 去抖合并 → 冷却/限流
-                     ├─ reply      内容超 20/30 字才拆条，1.5s 间隔发送（【长】/代码块整条发）
+                     ├─ inbox      每个会话一条待处理列表（私聊约 2 秒、群聊约 4 秒去抖）
+                     ├─ reply      换行分条；超平台上限才按句切开；一次回复最多约 800 字
+                     │             每条先等再发；私聊等待开始时 set_input_status
                      ├─ proactive  闲时唤醒（可沉默）+ 免打扰 + 每日上限
                      ├─ interject  群聊随机插话（实验性）
                      └─ bridge     把 { kind:'qq', userId, groupId, mentioned } 放进 source
@@ -209,8 +186,8 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 |---|---|
 | `channel` | OneBot 11 WS 连接、指数退避重连、`message_id` 去重、@ 判定、发送与限流 |
 | `persona` | 按开关拼装基础卡+隐藏卡、注入稳定前缀、三个 persona 工具、运行时状态持久化 |
-| `rate` | 去抖（debounce）、合并（batch）、冷却（cooldown）、每分钟/每小时上限 |
-| `reply` | 内容过长才分条（群聊 20 / 私聊 30 字上限）、长文本整条发、1.5s 间隔 |
+| `inbox` | 入站列表。少于 3 条为正常，3 到 5 条为加急，多于 5 条为堆积。满 10 条后新消息不再入列。列表不空时不主动发言、不插话 |
+| `reply` | 换行是一条消息，代码块保持整段。短句等待约 1.5–2.5 秒，更长的约 2.5–4 秒。全账号一条发送队列：群至少隔 2 秒、每分钟 8 条、每小时 80 条；私聊至少隔 1 秒、每分钟 15 条、每小时 200 条 |
 | `proactive` | 空闲计时、免打扰、每日上限、`SILENT` 可沉默 |
 | `interject` | 概率 + 最小间隔 + 每小时上限的随机插话闸门 |
 | `bridge` | 构造 `UserMessage.source`（身份）、`agent.followup()`、监听 `assistant/message` 回发 |
@@ -229,7 +206,7 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 2. 不自动切换人格，默认只手动 `switch_persona`。
 3. `activeHours` 先不做正式配置。
 4. 新增人格只改源码（`personas.ts`）。
-5. 私聊无冷却、有去抖；群聊默认 @ 触发 + 合并 + 冷却。
+5. 私聊、群聊各自去抖后交给她处理；发送额度按全账号的 QQ 条数算，不再按唤醒次数冷却。
 6. 闲时主动默认关；随机插话设计但默认关。
 7. 四个开关（暴躁鲸鱼 / 小黄鱼 / 颜文字 / 贴吧喷子）**默认全关**；隐藏卡关闭时不注入。
 8. 黄腔 / 荤段子 / 好色属于小黄鱼开关，归小鲸鱼的隐藏层。

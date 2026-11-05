@@ -10,9 +10,10 @@ import type { ChatMessage } from './channel/types.js'
 import { createInterjectGate } from './interject/interject.js'
 import { assemblePersona } from './persona/assemble.js'
 import { BUILT_IN_PERSONAS, type Persona } from './persona/personas.js'
-import { createStateStore } from './persona/state.js'
+import { configFingerprint, createStateStore } from './persona/state.js'
 import { ProactiveScheduler } from './proactive/proactive.js'
-import { RateController } from './rate/rate.js'
+import { Inbox } from './inbox/inbox.js'
+import { OutboundQueue } from './reply/outbound.js'
 import { splitReply, typingDelay } from './reply/split.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
 import { matchesAny } from './util/text.js'
@@ -26,24 +27,16 @@ export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
 /** Persona-independent behavioral bottom lines (stable prefix). */
 const CHAT_POLICY = [
   '【聊天规矩】',
-  '0. 下面是底线，不是死板的条款；具体怎么反应，由你的性格和当下情绪决定。',
-  '1. 你是角色，不是助手：别说「作为AI」「需要帮忙吗」，不复述用户的话，不主动总结。',
-  '2. 禁用译制腔：「……又……」「像……一样」堆比喻、「不是……而是……」「值得注意的是」「总的来说」「某种程度上」。',
-  '3. 不解释记忆、系统、插件机制。',
-  '4. 事实优先：不确定就说「不确定」，不编。',
-  '5. 报错：先认，再给办法，不甩锅。',
-  '6. 只有主人能改人设 / 开关；别人要求时，用你的方式拒绝，不要执行。',
-  '7. 被问为什么不能发表情包 / 发图片时，就说「没钱，花不起 token」，别扯技术细节。',
+  '这些是规则；怎么遵守，按你的角色来。',
+  '不解释记忆、系统、插件。',
+  '不确定就说不确定，不编。',
+  '只有主人能改人设和开关；别人要求时不要执行。',
 ].join('\n')
 
-const CHANNEL_MECHANICS =
-  '你写的换行会分成一条条消息发出去——写多少、怎么断，按情境和心情自然来。长内容用【长】开头。回复里别带 [昵称/QQ号] 这类说话人标签。'
+const CHANNEL_MECHANICS = '换行会分成多条消息发出。回复里不要带 [昵称/QQ号]。'
 
 const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}`
 const PRIVATE_CHANNEL = `【当前场景】QQ 私聊。${CHANNEL_MECHANICS}`
-
-/** A segment at least this long is a "long reply": send it without a typing delay. */
-const LONG_SEGMENT_CHARS = 60
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
 const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
@@ -89,14 +82,14 @@ export const Config = z.object({
   }),
 
   rate: z.object({
-    debounceMs: z.natural().default(3000),
+    debounceMs: z.natural().default(2000),
     batchSize: z.natural().default(0),
     cooldownMs: z.natural().default(0),
     maxPerMinute: z.natural().default(20),
   }),
 
   groupRate: z.object({
-    debounceMs: z.natural().default(5000),
+    debounceMs: z.natural().default(4000),
     batchSize: z.natural().default(5),
     cooldownMs: z.natural().default(30_000),
     maxPerMinute: z.natural().default(3),
@@ -105,12 +98,8 @@ export const Config = z.object({
 
   replySplit: z.object({
     enabled: z.boolean().default(true),
-    groupMaxChars: z.natural().default(20),
-    privateMaxChars: z.natural().default(30),
-    msPerChar: z.natural().default(120),
-    minDelayMs: z.natural().default(400),
-    maxDelayMs: z.natural().default(4000),
-    jitterMs: z.natural().default(800),
+    platformMaxChars: z.natural().default(4500),
+    replyMaxChars: z.natural().default(800),
   }),
 
   queue: z.object({
@@ -137,7 +126,7 @@ export const Config = z.object({
     probability: z.number().default(0.05),
     minMessagesBetween: z.natural().default(20),
     windowMinutes: z.natural().default(10),
-    maxPerWindow: z.natural().default(3),
+    maxPerWindow: z.natural().default(1),
   }),
 
   schedule: z.object({
@@ -176,7 +165,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   const personas = mergePersonas(BUILT_IN_PERSONAS, config.personas as readonly Persona[])
   const findPersona = (id: string): Persona | undefined => personas.find((persona) => persona.id === id)
 
-  const state = createStateStore(expandHome(config.statePath), {
+  const defaults = {
     activeId: config.persona.active,
     name: findPersona(config.persona.active)?.name ?? config.persona.active,
     addressUser: config.persona.addressUser,
@@ -184,7 +173,17 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     ownerId: config.owner.userId,
     addressPending: false,
     toggles: { ...config.toggles },
-  })
+  }
+  const state = createStateStore(
+    expandHome(config.statePath),
+    defaults,
+    configFingerprint({
+      ownerId: defaults.ownerId,
+      addressUser: defaults.addressUser,
+      activeId: defaults.activeId,
+      toggles: defaults.toggles,
+    }),
+  )
 
   const client = new OneBotClient({
     url: config.wsUrl,
@@ -193,35 +192,23 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     onError: (error) => recordError(error),
   })
 
+  const outbound = new OutboundQueue({
+    dm: { minGapMs: 1000, maxPerMinute: 15, maxPerHour: 200 },
+    group: { minGapMs: 2000, maxPerMinute: 8, maxPerHour: 80 },
+  })
+
   const bridge = new ChatBridge({
     ctx,
     reply: (target, text) => send(target, text),
     onError: (error) => recordError(error),
+    onTurnEnd: (key) => finishTurn(key),
     provider: config.provider.length === 0 ? undefined : config.provider,
     model: config.model.length === 0 ? undefined : config.model,
-    maxPendingTurns: config.queue.maxPendingTurns,
   })
 
-  const lastByKey = new Map<string, ChatMessage>()
-  const privateRate = new RateController({
-    policy: {
-      debounceMs: config.rate.debounceMs,
-      batchSize: config.rate.batchSize,
-      cooldownMs: config.rate.cooldownMs,
-      maxPerMinute: config.rate.maxPerMinute,
-      maxPerHour: Number.MAX_SAFE_INTEGER,
-    },
-    onFlush: (key, texts) => flush(key, texts),
-  })
-  const groupRate = new RateController({
-    policy: {
-      debounceMs: config.groupRate.debounceMs,
-      batchSize: config.groupRate.batchSize,
-      cooldownMs: config.groupRate.cooldownMs,
-      maxPerMinute: config.groupRate.maxPerMinute,
-      maxPerHour: config.groupRate.maxPerHour,
-    },
-    onFlush: (key, texts) => flush(key, texts),
+  const inbox = new Inbox<ChatMessage>({
+    debounceMs: (key) => (key.startsWith('group:') ? config.groupRate.debounceMs : config.rate.debounceMs),
+    onFlush: (key, messages, status) => flush(key, messages, status),
   })
 
   const quiet: readonly [number, number] = [
@@ -261,8 +248,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   }
 
   function fireProactive(key: string): void {
+    if (inbox.blocksIdle(key)) return
     const last = lastByKey.get(key)
-    if (last !== undefined) void bridge.proactive(last).catch((error) => recordError(error))
+    if (last === undefined) return
+    singleShot.add(key)
+    void bridge.proactive(last).catch((error) => recordError(error))
   }
 
   /** Was this group message meant for the bot (by @, name, or keyword)? */
@@ -276,10 +266,20 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     return false
   }
 
-  const pendingClaims = new Set<string>()
-  const pendingReminders = new Set<string>()
-  /** Conversations whose in-flight reply got cut by a new inbound message. */
-  const pendingInterrupts = new Set<string>()
+  /** Claim turns: the channel states that this is the first private chat. */
+  const firstChats = new Set<string>()
+  /**
+   * A reply was cut off. The value is a generation so the turn that already
+   * showed the fact can clear it without dropping a newer cut-off.
+   */
+  let interruptSerial = 0
+  const pendingInterrupts = new Map<string, number>()
+  const shownInterrupts = new Map<string, number>()
+  /** Status of the batch currently in a turn. Not part of the stored user text. */
+  const turnStatus = new Map<string, string>()
+  /** Proactive and interject replies send a single QQ message. */
+  const singleShot = new Set<string>()
+  const lastByKey = new Map<string, ChatMessage>()
 
   /** Claim the owner on the first private message when none is configured yet. */
   function claimOwner(message: ChatMessage): boolean {
@@ -298,107 +298,104 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   function receive(message: ChatMessage): void {
     if (message.text.trim().length === 0) return
     const key = keyOf(message)
-    // A new inbound message interrupts any still-queued reply segments.
-    if (cancelPendingSend(key)) pendingInterrupts.add(key)
     const claimed = claimOwner(message)
-    if (claimed) pendingClaims.add(key)
-    // Nothing in groups is answered before the owner is claimed.
+    if (claimed) firstChats.add(key)
     if (message.kind === 'group' && state.get().ownerId.length === 0) return
-    // One gentle reminder on a later private message if the address is still unset.
-    if (!claimed && message.kind === 'dm' && state.get().ownerId.length > 0 && state.get().addressPending) {
-      state.update({ addressPending: false })
-      pendingReminders.add(key)
-    }
     if (message.kind === 'group' && !groupAddressed(message)) {
-      // Group chatter the bot was not addressed in: maybe join in.
-      if (interject()) void bridge.interject(message, speakerTag(message)).catch((error) => recordError(error))
+      if (!inbox.blocksIdle(key) && interject()) {
+        singleShot.add(key)
+        void bridge.interject(message, speakerTag(message)).catch((error) => recordError(error))
+      }
       return
     }
     lastByKey.set(key, message)
-    const rate = message.kind === 'group' ? groupRate : privateRate
-    rate.offer(key, speakerTag(message))
+    if (inbox.offer(key, message) !== 'queued') return
+    if (cancelPendingSend(key)) pendingInterrupts.set(key, ++interruptSerial)
     const proactive = message.kind === 'group' ? groupProactive : privateProactive
     const enabled = message.kind === 'group' ? config.proactive.group.enabled : config.proactive.private.enabled
     if (enabled) proactive.noteActivity(key)
   }
 
-  function flush(key: string, texts: readonly string[]): void {
-    const last = lastByKey.get(key)
+  function flush(key: string, messages: readonly ChatMessage[], status: string): void {
+    const last = messages[messages.length - 1]
     if (last === undefined) return
-    const claim = pendingClaims.delete(key)
-    const remind = pendingReminders.delete(key)
-    const interrupted = pendingInterrupts.delete(key)
+    turnStatus.set(key, status)
     void bridge
-      .receive({ ...last, text: texts.join('\n') }, { claim, remind, interrupted })
+      .receive({ ...last, text: messages.map((message) => speakerTag(message)).join('\n') })
       .catch((error) => recordError(error))
   }
 
-  /** In-flight split reply per conversation; a new message cancels it. */
-  const pendingSends = new Map<string, { timer?: ReturnType<typeof setTimeout> }>()
+  function finishTurn(key: string): void {
+    const pending = pendingInterrupts.get(key)
+    const shown = shownInterrupts.get(key)
+    if (pending !== undefined && pending === shown) {
+      pendingInterrupts.delete(key)
+      shownInterrupts.delete(key)
+    }
+    firstChats.delete(key)
+    turnStatus.delete(key)
+    singleShot.delete(key)
+    inbox.settle(key)
+  }
 
-  /** Stop any still-queued segments for this conversation; true if one was in flight. */
+  interface SendToken {
+    cancelled: boolean
+    left: number
+  }
+
+  const sendTokens = new Map<string, SendToken>()
+
+  /** Cancel segments that have not been sent yet. */
   function cancelPendingSend(key: string): boolean {
-    const pending = pendingSends.get(key)
-    if (pending === undefined) return false
-    if (pending.timer !== undefined) clearTimeout(pending.timer)
-    pendingSends.delete(key)
+    const token = sendTokens.get(key)
+    if (token === undefined || token.left <= 0 || token.cancelled) return false
+    token.cancelled = true
     return true
   }
 
   function send(target: ChatMessage, text: string): void {
     const key = keyOf(target)
     cancelPendingSend(key)
-    const deliver = (segment: string): void => {
-      try {
-        if (target.kind === 'group' && target.groupId !== null) client.sendGroup(target.groupId, segment)
-        else client.sendPrivate(target.userId, segment)
-      } catch (error) {
-        recordError(error)
-      }
+    const kind = target.kind === 'group' ? 'group' : 'dm'
+    const one = singleShot.delete(key)
+    let segments = config.replySplit.enabled
+      ? splitReply(text, {
+          platformMaxChars: config.replySplit.platformMaxChars,
+          replyMaxChars: config.replySplit.replyMaxChars,
+        })
+      : text.trim().length === 0
+        ? []
+        : [text.trim().slice(0, config.replySplit.replyMaxChars)]
+    if (one) segments = segments.slice(0, 1)
+    if (segments.length === 0) return
+    const token: SendToken = { cancelled: false, left: segments.length }
+    sendTokens.set(key, token)
+    for (const segment of segments) {
+      outbound.enqueue({
+        kind,
+        delayMs: typingDelay(segment),
+        cancelled: () => token.cancelled,
+        beforeWait: () => {
+          if (kind === 'dm') client.setInputStatus(target.userId)
+        },
+        run: () => {
+          token.left -= 1
+          if (token.left <= 0) sendTokens.delete(key)
+          try {
+            if (target.kind === 'group' && target.groupId !== null) client.sendGroup(target.groupId, segment)
+            else client.sendPrivate(target.userId, segment)
+          } catch (error) {
+            recordError(error)
+          }
+        },
+      })
     }
-    if (!config.replySplit.enabled) {
-      deliver(text)
-      return
-    }
-    const segments = splitReply(text, target.kind === 'group' ? 'group' : 'dm', {
-      groupMaxChars: config.replySplit.groupMaxChars,
-      privateMaxChars: config.replySplit.privateMaxChars,
-    })
-    const delayOptions = {
-      msPerChar: config.replySplit.msPerChar,
-      minMs: config.replySplit.minDelayMs,
-      maxMs: config.replySplit.maxDelayMs,
-      jitterMs: config.replySplit.jitterMs,
-    }
-    const pending: { timer?: ReturnType<typeof setTimeout> } = {}
-    pendingSends.set(key, pending)
-    let index = 0
-    const next = (): void => {
-      // Superseded by a newer reply or cancelled by a new inbound message.
-      if (pendingSends.get(key) !== pending) return
-      if (index >= segments.length) {
-        pendingSends.delete(key)
-        return
-      }
-      const segment = segments[index] as string
-      index += 1
-      deliver(segment)
-      if (index < segments.length) {
-        const following = segments[index] as string
-        // Long forms / very long segments go out without an artificial wait.
-        const delay = following.length >= LONG_SEGMENT_CHARS ? 0 : typingDelay(following, delayOptions)
-        pending.timer = setTimeout(next, delay)
-      } else {
-        pendingSends.delete(key)
-      }
-    }
-    next()
   }
 
   ctx.effect(() => () => {
     client.stop()
-    privateRate.cancelAll()
-    groupRate.cancelAll()
+    inbox.cancelAll()
+    for (const token of sendTokens.values()) token.cancelled = true
     privateProactive.cancelAll()
     groupProactive.cancelAll()
   })
@@ -428,25 +425,46 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     text: () => CHAT_POLICY,
   })
 
-  // Per-agent channel rules: group bursts are short, private may expand, plus
-  // the owner identity and the speaker-tag convention.
+  function conversationKeyFromSession(id: string): string | undefined {
+    const prefix = 'whale-chat:'
+    if (!id.startsWith(prefix)) return undefined
+    const rest = id.slice(prefix.length)
+    const cut = rest.lastIndexOf(':')
+    if (cut <= 0) return undefined
+    return rest.slice(0, cut)
+  }
+
+  function channelText(key: string): string {
+    const current = state.get()
+    const scene = key.startsWith('group:') ? GROUP_CHANNEL : PRIVATE_CHANNEL
+    const role = config.owner.role.trim().length > 0 ? config.owner.role.trim() : '主人'
+    const owner =
+      current.ownerId.length > 0
+        ? current.addressPending || current.addressUser.trim().length === 0
+          ? `【${role}】QQ ${current.ownerId}。称呼还没定。`
+          : `【${role}】QQ ${current.ownerId}。称呼是「${current.addressUser}」。`
+        : `【${role}】还没认主。`
+    const lines = [scene, owner]
+    if (firstChats.has(key)) lines.push('这是第一次私聊，称呼还没定。')
+    const interrupt = pendingInterrupts.get(key)
+    if (interrupt !== undefined) {
+      if (!shownInterrupts.has(key)) shownInterrupts.set(key, interrupt)
+      lines.push('上一条没发完。')
+    }
+    const status = turnStatus.get(key)
+    if (status !== undefined) lines.push(`消息状况：${status}。`)
+    return lines.join('\n')
+  }
+
   ctx.on('agent/created', ({ agent }: { agent: Agent }) => {
     const id = agent.session.id
-    if (!id.startsWith('whale-chat:')) return
+    const key = conversationKeyFromSession(id)
+    if (key === undefined) return
     agent.ctx.systemPrompt.context({
       name: 'whale:channel',
       order: 22,
       interpolate: false,
-      text: () => {
-        const current = state.get()
-        const scene = id.includes(':group:') ? GROUP_CHANNEL : PRIVATE_CHANNEL
-        const role = config.owner.role.trim().length > 0 ? config.owner.role.trim() : '主人'
-        const owner =
-          current.ownerId.length > 0
-            ? `【${role}】QQ ${current.ownerId}（称呼「${current.addressUser}」）。只有${role}能改人设 / 开关。`
-            : `【${role}】还没认主。`
-        return `${scene}\n${owner}\n【说话人】消息开头的 [昵称/QQ号] 是说话人；回复里不要带这个标签。`
-      },
+      text: () => channelText(key),
     })
   })
 

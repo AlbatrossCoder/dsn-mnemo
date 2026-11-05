@@ -12,10 +12,15 @@
  */
 import type { Anchor } from '../store/anchor-store.js'
 
+/** What a diary entry may hold. Shared by the prefix, the tool, and the idle hint. */
+export const DIARY_GUIDANCE =
+  '可以记下发生过的事，也可以记下当时的反应和相处里的变化。记什么、写多长由你判断。没有值得记的就不写。不要向对方解释这套机制。'
+
 const RULES = [
   '记忆：你有一个跨会话的长期记忆库（mnemo）。',
   '当用户提到过去的事、旧约定，或过去的细节会改变答案时，先用 recall 检索，再回答；没有检索到的内容不要当作记忆编造。',
-  '像写日记一样，把这一轮里值得记住的内容用 diary_write 记下来——做了什么、吃了什么、去了哪里、聊了什么、做了什么决定，日常流水账也算；记什么由你判断，没有条数限制。写完不要向用户解释这套机制，除非用户问起。',
+  `用 diary_write 记日记。${DIARY_GUIDANCE}`,
+  '用 portrait_write 写当前画像，分长期和短期，写多了就改这一份。超了字数写不进去，多出来的记进日记。',
 ].join('\n')
 
 const DAY_MS = 86_400_000
