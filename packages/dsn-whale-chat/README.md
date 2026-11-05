@@ -1,8 +1,10 @@
 # dsn-whale-chat
 
-鲸鱼娘 QQ 聊天插件（DeepSeek Harness）：**OneBot 11 通道 + 双人格 + 聊天频率控制**。
+鲸鱼娘 QQ 聊天插件（DeepSeek Harness）：**OneBot 11 通道 + 人物背景 + 消息队列**。
 
 记忆交给 [`dsn-mnemo`](https://www.npmjs.com/package/dsn-mnemo)，本插件不内置记忆，只负责「把 QQ 消息变成 DSH 会话」。
+
+**交流群**：QQ 群 `1109648974`
 
 ## 特性
 
