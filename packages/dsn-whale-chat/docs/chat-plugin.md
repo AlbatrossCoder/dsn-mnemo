@@ -102,7 +102,7 @@ persona:
   active: little-whale            # 内置：little-whale（自定义人格可追加）
   addressUser: 主人               # 对主人的称呼（没认主前无意义，默认 主人）
   custom: ''                      # 用户追加设定，优先级最高
-  aliases: [小鲸鱼, 鲸鱼, 鲸鲸, 鱼鱼, 鲸鱼娘]   # 群聊里这样叫她，也算在叫她
+  aliases: [小鲸鱼, 鲸鱼, 鲸鲸, 鱼鱼, 鲸鱼娘]   # 自称/人设用；群聊里光叫名字不会叫醒她
   disliked: [大肥鱼, 小肥鱼, 喂]                # 这样叫会被小抗议一下
 
 owner:                            # 唯一的最大权限用户（认主）
@@ -256,7 +256,8 @@ QQ ──OneBot WS──▶ dsn-whale-chat
 ## 11. 已完成 / 未做
 
 **已完成**
-- `aliases` / `disliked`：群聊里被叫名字也算在叫她；被叫难听外号也会响应（小抗议）。
+- `aliases`：人设/自称；群聊里**不会**因叫别名而主动回复（需 @）。
+- `disliked`：被叫难听外号仍会响应（小抗议）。
 - 自定义人格：配置 `personas` 追加（同 id 覆盖内置）。
 - 群聊关键词触发：`trigger.group: keyword` + `trigger.keywords`。
 

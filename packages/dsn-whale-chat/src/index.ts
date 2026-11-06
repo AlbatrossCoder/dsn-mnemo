@@ -331,12 +331,14 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     turnTimers.set(key, setTimeout(() => forceRelease(key), TURN_TIMEOUT_MS))
   }
 
-  /** Was this group message meant for the bot (by @, name, or keyword)? */
+  /**
+   * Was this group message meant for the bot?
+   * Aliases alone do not wake her — only @, disliked names, `all`, or keywords.
+   */
   function groupAddressed(message: ChatMessage): boolean {
     if (message.mentioned) return true
     const mode = config.trigger.group
     if (mode === 'all') return true
-    if (matchesAny(message.text, config.persona.aliases)) return true
     if (matchesAny(message.text, config.persona.disliked)) return true
     if (mode === 'keyword' && matchesAny(message.text, config.trigger.keywords)) return true
     return false
