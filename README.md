@@ -6,8 +6,8 @@
 
 | 插件 | 一句话 | 状态 |
 |---|---|---|
-| [dsn-mnemo](packages/dsn-mnemo) | 跨会话记忆：原文 / 日记 / 锚点 / 画像 | `0.8.2`（已发布 npm） |
-| [dsn-whale-chat](packages/dsn-whale-chat) | 鲸鱼娘 QQ 聊天：通道 + 人物背景 + 消息列表 | `0.2.16`（已发布 npm） |
+| [dsn-mnemo](packages/dsn-mnemo) | 跨会话记忆：原文 / Episode / State·Bond / 锚点 / 画像 | `0.9.0` |
+| [dsn-whale-chat](packages/dsn-whale-chat) | 鲸鱼娘 QQ 聊天：通道 + Soul 人设 + 消息列表 | `0.3.0` |
 
 两个插件解耦：聊天插件负责把 QQ 消息送进 DSH 并带上身份，记忆插件负责记住，互不依赖。
 
@@ -21,9 +21,9 @@
 
 | 特性 | 说明 |
 |---|---|
-| **三层记忆** | L0 原文（聊天日志）→ L1 日记（主模型书写）→ L2 锚点（日期提醒） |
-| **不调用模型** | 纯本地存储 + 检索 + 提示，零 LLM 成本；日记由正在对话的主模型自己写 |
-| **主体隔离** | 私聊 `user:<id>`、群聊 `group:<id>`，跨主体默认隔离 |
+| **心智分层** | L0 原文 → Episode 日记（提示/自觉/自动整理）→ State·Bond → 锚点 |
+| **读侧可见性** | 私聊可读群公开与普通人关系；群仅本群公开；主人私聊硬隔离 |
+| **少工具规程** | 稳定前缀用相处口吻；`mind_update` / `diary_write` / `recall` |
 | **中文检索** | `Intl.Segmenter` 预分词 + FTS5 + 字符兜底，长句也能召回 |
 | **三级可见性** | `public` / `private` / `secret`，群聊里 `secret` 硬过滤 |
 | **零第三方运行时依赖** | `node:sqlite` 单文件数据库，无原生模块 |
@@ -114,5 +114,6 @@ limitations under the License.
 
 ## 文档
 
+- `docs/mind-refactor.md`：心智重构定稿（Soul / State / Bond / Episode）
 - `packages/dsn-mnemo/docs/`：记忆模型、多用户适配
 - `packages/dsn-whale-chat/docs/`：聊天插件设计、人格卡（`persona/`）、QQ 接入

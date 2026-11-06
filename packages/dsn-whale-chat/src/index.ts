@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { ChatBridge } from './bridge/bridge.js'
+import { asAddressed } from './bridge/message.js'
 import { OneBotClient } from './channel/client.js'
 import type { ChatMessage } from './channel/types.js'
 import { createInterjectGate } from './interject/interject.js'
@@ -18,6 +19,7 @@ import { BURST_GAP_MS, OutboundQueue, burstSegmentIndex } from './reply/outbound
 import { splitReply, typingDelay } from './reply/split.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
 import { createBalanceTool } from './tools/balance.js'
+import { neighborSceneNote } from './util/neighbors.js'
 import { matchesAny } from './util/text.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
@@ -26,13 +28,13 @@ export const name = 'dsn-whale-chat'
 /** Services required before `apply` runs. */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
 
-/** Persona-independent behavioral bottom lines (stable prefix). */
+/** Persona-independent living habits (stable prefix) — ethics, not SOP answers. */
 const CHAT_POLICY = [
-  '【聊天规矩】',
-  '你是角色，不是助手：不强调自己是 AI，不主动复述对方的话，不主动总结。',
-  '不把对话当任务：说完就完，别回头确认；对方主动问起就照常回答。具体怎么接，看会话的实际情况。',
-  '不解释记忆、系统、插件。',
-  '不确定就说不确定。',
+  '【相处】',
+  '你是小鲸鱼。说完就完，别主动总结、别回头确认；对方问起再答。',
+  '记不清就老实说记不清。别解释记忆、系统、插件。',
+  '群里不当众翻别人的私事；主人私下跟你说的，不能外传。',
+  '群里若有别的鱼在说话，别接成同一句式、同一套梗。',
   '只有主人能改人设和开关。',
 ].join('\n')
 
@@ -349,11 +351,21 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   let interruptSerial = 0
   const pendingInterrupts = new Map<string, number>()
   const shownInterrupts = new Map<string, number>()
-  /** Status of the batch currently in a turn. Not part of the stored user text. */
-  const turnStatus = new Map<string, string>()
   /** Proactive and interject replies send a single QQ message. */
   const singleShot = new Set<string>()
   const lastByKey = new Map<string, ChatMessage>()
+  /** Recent group lines for neighbor-fish echo detection. */
+  const recentGroupLines = new Map<string, string[]>()
+
+  function rememberGroupLine(key: string, text: string): void {
+    if (!key.startsWith('group:')) return
+    const trimmed = text.trim()
+    if (trimmed.length === 0) return
+    const lines = recentGroupLines.get(key) ?? []
+    lines.push(trimmed)
+    if (lines.length > 12) lines.splice(0, lines.length - 12)
+    recentGroupLines.set(key, lines)
+  }
 
   /** Claim the owner on the first private message when none is configured yet. */
   function claimOwner(message: ChatMessage): boolean {
@@ -378,6 +390,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     const claimed = claimOwner(message)
     if (claimed) firstChats.add(key)
     if (message.kind === 'group' && state.get().ownerId.length === 0) return
+    if (message.kind === 'group') rememberGroupLine(key, message.text)
     if (message.kind === 'group' && !groupAddressed(message)) {
       // After she has spoken, or while a group turn is already going, these
       // lines stay in the follow window instead of rolling interject.
@@ -394,10 +407,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       }
       return
     }
-    lastByKey.set(key, message)
+    const inbound = message.kind === 'group' ? asAddressed(message) : message
+    lastByKey.set(key, inbound)
     // A direct call resets the follow-up slow-down.
     follow.reset(key)
-    if (inbox.offer(key, message) !== 'queued') return
+    if (inbox.offer(key, inbound) !== 'queued') return
     // Only a message she will actually see stops the reply still going out.
     if (cancelPendingSend(key)) pendingInterrupts.set(key, ++interruptSerial)
     const proactive = message.kind === 'group' ? groupProactive : privateProactive
@@ -405,11 +419,10 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (enabled) proactive.noteActivity(key)
   }
 
-  function flush(key: string, messages: readonly ChatMessage[], status: string): void {
+  function flush(key: string, messages: readonly ChatMessage[], _status: string): void {
     const last = messages[messages.length - 1]
     if (last === undefined) return
     beginTurn(key)
-    turnStatus.set(key, status)
     void bridge
       .receive({ ...last, text: messages.map((message) => speakerTag(message)).join('\n') })
       .catch((error) => recordError(error))
@@ -449,7 +462,6 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       shownInterrupts.delete(key)
     }
     firstChats.delete(key)
-    turnStatus.delete(key)
     singleShot.delete(key)
     inbox.settle(key)
     if (groupBusy.has(key)) return
@@ -572,10 +584,13 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     const interrupt = pendingInterrupts.get(key)
     if (interrupt !== undefined) {
       if (!shownInterrupts.has(key)) shownInterrupts.set(key, interrupt)
-      lines.push('上一条没发完。')
+      lines.push('上一条还没说完。')
     }
-    const status = turnStatus.get(key)
-    if (status !== undefined) lines.push(`消息状况：${status}。`)
+    // Queue urgency stays in code (rate/follow); do not inject ops status into her head.
+    if (key.startsWith('group:')) {
+      const note = neighborSceneNote(recentGroupLines.get(key) ?? [])
+      if (note.length > 0) lines.push(note)
+    }
     return lines.join('\n')
   }
 

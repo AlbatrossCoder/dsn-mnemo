@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { ChatMessage } from '../channel/types.js'
-import { conversationKey, toFollowMessage, toUserMessage } from './message.js'
+import { asAddressed, conversationKey, toFollowMessage, toUserMessage } from './message.js'
 
 function dm(): ChatMessage {
   return { kind: 'dm', userId: '2000', groupId: null, messageId: '1', text: '你好', mentioned: true, nickname: null, at: 0 }
@@ -34,6 +34,16 @@ test('toUserMessage carries QQ identity and text', () => {
   assert.equal(message.source.mentioned, false)
   assert.deepEqual(message.content, [{ type: 'text', text: '大家好' }])
   assert.equal(typeof message.id, 'string')
+})
+
+test('asAddressed marks a group message mentioned without touching a dm', () => {
+  const addressed = asAddressed(group())
+  assert.equal(addressed.mentioned, true)
+  assert.equal(addressed.text, '大家好')
+  assert.equal(asAddressed({ ...group(), mentioned: true }).mentioned, true)
+  assert.equal(asAddressed(dm()).mentioned, true)
+  const stored = toUserMessage(addressed)
+  assert.equal(stored.source.mentioned, true)
 })
 
 test('toFollowMessage is a nudge and not a stored chat line', () => {

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { openDatabase } from '../db/database.js'
 import { countDiaries, searchDiaries } from '../store/diary-store.js'
+import { getSubjectLedger } from '../store/ledger-store.js'
 import { touchSession } from '../store/message-store.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './diary-write.js'
 
@@ -65,6 +69,39 @@ test('diary_write defaults to public in a group and honours an explicit visibili
     }>
     assert.equal(rows.find((row) => row.id === pub.id)?.visibility, 'public')
     assert.equal(rows.find((row) => row.id === secret.id)?.visibility, 'secret')
+  } finally {
+    db.close()
+  }
+})
+
+test('diary_write forces the owner to secret and settles the subject ledger', async () => {
+  const db = openDatabase(':memory:')
+  const dir = mkdtempSync(join(tmpdir(), 'mnemo-owner-'))
+  const statePath = join(dir, 'whale-chat-state.json')
+  writeFileSync(statePath, JSON.stringify({ ownerId: 'u-42' }))
+  try {
+    touchSession(db, 's-owner', 1, { kind: 'dm', audienceId: 'u-42' })
+    touchSession(db, 's-friend', 1, { kind: 'dm', audienceId: 'u-7' })
+    const fromFile = createDiaryWriteTool(db, { statePath })
+    const explicit = createDiaryWriteTool(db, { ownerId: 'u-42', statePath: join(dir, 'missing.json') })
+    const ownerExec = { agent: { session: { id: 's-owner', deriveMessages: () => [] } } } as never
+    const friendExec = { agent: { session: { id: 's-friend', deriveMessages: () => [] } } } as never
+
+    const forced = (await fromFile.execute({ content: '主人私下说的一件事', visibility: 'public' }, ownerExec)) as {
+      id: number
+    }
+    const already = (await explicit.execute({ content: '主人标成秘密的另一件', visibility: 'secret' }, ownerExec)) as {
+      id: number
+    }
+    const friend = (await fromFile.execute({ content: '朋友公开聊了海边', visibility: 'public' }, friendExec)) as {
+      id: number
+    }
+    const rows = db.prepare('select id, visibility from diaries').all() as Array<{ id: number; visibility: string }>
+    assert.equal(rows.find((row) => row.id === forced.id)?.visibility, 'secret')
+    assert.equal(rows.find((row) => row.id === already.id)?.visibility, 'secret')
+    assert.equal(rows.find((row) => row.id === friend.id)?.visibility, 'public')
+    assert.ok(getSubjectLedger(db, { kind: 'user', id: 'u-42' })?.diaryWrittenAt)
+    assert.ok(getSubjectLedger(db, { kind: 'user', id: 'u-7' })?.diaryWrittenAt)
   } finally {
     db.close()
   }

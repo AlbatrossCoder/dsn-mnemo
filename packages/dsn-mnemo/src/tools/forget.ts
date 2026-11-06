@@ -2,8 +2,9 @@
  * The `mnemo_forget` tool: erase every memory that belongs to one subject.
  *
  * Deleting a person's or a group's memory removes L0 messages (and the
- * sessions that hold them), diaries, anchors, and the `persons` row. It is the
- * only supported way to "forget me".
+ * sessions that hold them), diaries, anchors, portraits, mind state, bonds,
+ * the subject ledger, and the `persons` row. It is the only supported way to
+ * "forget me".
  *
  * @module dsn-mnemo/tools/forget
  */
@@ -18,6 +19,9 @@ interface ForgotCounts {
   anchors: number
   persons: number
   portraits: number
+  mindStates: number
+  bonds: number
+  ledger: number
 }
 
 function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCounts {
@@ -36,6 +40,9 @@ function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCou
       anchors: 0,
       persons: 0,
       portraits: 0,
+      mindStates: 0,
+      bonds: 0,
+      ledger: 0,
     }
 
     for (const sessionId of sessionIds) {
@@ -46,6 +53,15 @@ function forget(db: DatabaseSync, kind: 'user' | 'group', id: string): ForgotCou
     )
     counts.anchors = Number(
       db.prepare('delete from anchors where subject_kind = ? and subject_id = ?').run(kind, id).changes,
+    )
+    counts.mindStates = Number(
+      db.prepare('delete from mind_states where subject_kind = ? and subject_id = ?').run(kind, id).changes,
+    )
+    counts.bonds = Number(
+      db.prepare('delete from bonds where subject_kind = ? and subject_id = ?').run(kind, id).changes,
+    )
+    counts.ledger = Number(
+      db.prepare('delete from subject_ledger where subject_kind = ? and subject_id = ?').run(kind, id).changes,
     )
     if (kind === 'user') {
       counts.persons = Number(db.prepare('delete from persons where user_id = ?').run(id).changes)
@@ -93,6 +109,9 @@ export function createForgetTool(db: DatabaseSync) {
           anchors: { type: 'number' },
           persons: { type: 'number' },
           portraits: { type: 'number' },
+          mindStates: { type: 'number' },
+          bonds: { type: 'number' },
+          ledger: { type: 'number' },
         },
         additionalProperties: false,
       },

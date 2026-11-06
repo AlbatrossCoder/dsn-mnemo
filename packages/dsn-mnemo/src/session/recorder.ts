@@ -13,6 +13,7 @@
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import type { DatabaseSync } from 'node:sqlite'
 import { flattenContent } from './flatten.js'
+import { getBond, upsertBond } from '../store/bond-store.js'
 import { insertMessage, touchSession, type MessageRole } from '../store/message-store.js'
 
 /** The only session surface the recorder needs. */
@@ -29,6 +30,7 @@ interface MessageShape {
     readonly userId?: unknown
     readonly groupId?: unknown
     readonly mentioned?: unknown
+    readonly nickname?: unknown
   }
 }
 
@@ -78,6 +80,23 @@ function identityOf(message: MessageShape): MessageIdentity {
   }
   // The local desktop user: one implicit person.
   return { kind: 'dm', audienceId: 'local', speakerId: null, addressed: true }
+}
+
+function nicknameOf(message: MessageShape): string {
+  const name = message.source?.nickname
+  return typeof name === 'string' ? name.trim() : ''
+}
+
+/**
+ * First time a group speaker shows up, keep their nickname as the bond label.
+ * An existing label is left alone.
+ */
+function seedGroupBond(db: DatabaseSync, groupId: string, peerId: string, nickname: string): void {
+  if (nickname.length === 0) return
+  const subject = { kind: 'group' as const, id: groupId }
+  const existing = getBond(db, subject, peerId)
+  if (existing !== undefined && existing.label.trim().length > 0) return
+  upsertBond(db, { subject, peerId, label: nickname })
 }
 
 /** Remove the chat channel's per-line `[昵称/QQ号]` speaker tag before store. */
@@ -163,6 +182,9 @@ export class SessionRecorder {
             content: recorded,
             raw: JSON.stringify(stored),
           })
+          if (role === 'user' && identity?.kind === 'group' && identity.speakerId !== null) {
+            seedGroupBond(this.db, identity.audienceId, identity.speakerId, nicknameOf(message))
+          }
           return
         }
         default:

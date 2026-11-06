@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { openDatabase } from '../db/database.js'
+import { getBond } from '../store/bond-store.js'
 import { SessionRecorder } from './recorder.js'
 import { countMessages, searchMessages } from '../store/message-store.js'
 
@@ -270,6 +271,38 @@ test('recorded content is searchable through the L0 index', () => {
     recorder.handle(session, makeEvent('user/message', 1, userMessage('下周三去看海')))
     const hits = searchMessages(db, '看海')
     assert.equal(hits.length, 1)
+  } finally {
+    db.close()
+  }
+})
+
+test('a group speaker nickname seeds an empty bond and does not overwrite a label', () => {
+  const db = openDatabase(':memory:')
+  try {
+    const recorder = new SessionRecorder(db)
+    const speak = (seq: number, userId: string, nickname: string | null, text: string) => {
+      recorder.handle(
+        { id: 's-bond' },
+        makeEvent('user/message', seq, {
+          id: `m${seq}`,
+          role: 'user',
+          content: [{ type: 'text', text }],
+          source: {
+            kind: 'qq',
+            userId,
+            groupId: '20002',
+            mentioned: true,
+            ...(nickname === null ? {} : { nickname }),
+          },
+        }),
+      )
+    }
+    speak(1, '10001', '小明', '在吗')
+    assert.equal(getBond(db, { kind: 'group', id: '20002' }, '10001')?.label, '小明')
+    speak(2, '10001', '小红', '还在')
+    assert.equal(getBond(db, { kind: 'group', id: '20002' }, '10001')?.label, '小明')
+    speak(3, '10002', null, '你好')
+    assert.equal(getBond(db, { kind: 'group', id: '20002' }, '10002'), undefined)
   } finally {
     db.close()
   }

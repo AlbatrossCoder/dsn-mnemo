@@ -246,8 +246,61 @@ create table portraits (
 );
 `
 
+/**
+ * V6: living mind layers — State (short near-term condition) and Bond
+ * (per-person / per-peer relationship ledger). Episode continues to use
+ * `diaries` until the auto-consolidation path lands.
+ */
+const V6 = `
+create table mind_states (
+  subject_kind text not null,
+  subject_id text not null,
+  mood text not null default '',
+  energy text not null default '',
+  unresolved text not null default '',
+  updated_at text not null default (datetime('now')),
+  primary key (subject_kind, subject_id)
+);
+
+create table bonds (
+  subject_kind text not null,
+  subject_id text not null,
+  peer_id text not null,
+  label text not null default '',
+  notes text not null default '',
+  temperature real not null default 0.5,
+  updated_at text not null default (datetime('now')),
+  primary key (subject_kind, subject_id, peer_id)
+);
+create index idx_bonds_subject on bonds(subject_kind, subject_id, updated_at desc);
+`
+
+/**
+ * V7: per-subject pending ledger.
+ *
+ * Diary and mind hints accumulate across every session of one person or one
+ * group. Prompting records `*_prompted_at` only. A diary stretch is settled
+ * solely by `diary_written_at` (a successful `diary_write`).
+ */
+const V7 = `
+create table subject_ledger (
+  subject_kind text not null,
+  subject_id text not null,
+  diary_prompted_at text,
+  diary_written_at text,
+  mind_prompted_at text,
+  updated_at text not null default (datetime('now')),
+  primary key (subject_kind, subject_id)
+);
+`
+
+/** V8: mind stretch settles only when `mind_update` actually runs. */
+const V8 = `
+alter table subject_ledger add column mind_written_at text;
+`
+
 /** Every migration in application order. Append only; never edit a released entry. */
-export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5]
+export const MIGRATIONS: readonly string[] = [V1, V2, V3, V4, V5, V6, V7, V8]
 
 /** Highest schema version this build understands. */
 export const SCHEMA_VERSION = MIGRATIONS.length
