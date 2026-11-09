@@ -112,5 +112,5 @@ export function renderBonds(bonds: readonly Bond[]): string {
     const note = bond.notes.trim()
     return note.length > 0 ? `- ${name}：${note}` : `- ${name}`
   })
-  return `【相处】\n${lines.join('\n')}`
+  return `【相处】按关系接，别对谁都一个调。\n${lines.join('\n')}`
 }

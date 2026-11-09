@@ -108,10 +108,18 @@ export class FollowBuffer<T> {
     return 'queued'
   }
 
-  /** Flush a batch that was held behind another turn, once she is watching. */
+  /**
+   * A turn ended: if a batch was held, start (or restart) the backoff timer.
+   * Do not flush immediately — otherwise follow-up slow-down never applies to
+   * lines that arrived while she was busy.
+   */
   poke(key: string): void {
     if (!this.held.has(key) || !this.sticky.has(key) || this.options.isBusy(key)) return
-    this.flush(key)
+    if ((this.waiting.get(key)?.length ?? 0) === 0) {
+      this.held.delete(key)
+      return
+    }
+    this.arm(key)
   }
 
   cancelAll(): void {

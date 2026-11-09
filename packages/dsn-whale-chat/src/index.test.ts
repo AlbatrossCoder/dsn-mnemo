@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { Config, inject, name } from './index.js'
+import { Config, inject, isGroupAddressed, name } from './index.js'
 
 test('plugin exports shape and default config', () => {
   assert.equal(name, 'dsn-whale-chat')
@@ -27,4 +27,13 @@ test('plugin exports shape and default config', () => {
   assert.equal(parsed.randomInterject.windowMinutes, 10)
   assert.equal(parsed.randomInterject.maxPerWindow, 1)
   assert.deepEqual(parsed.schedule.quietHours, [23, 8])
+})
+
+test('group wake is only @ or the display name', () => {
+  assert.equal(isGroupAddressed({ mentioned: true, text: '你好' }, '吨吨'), true)
+  assert.equal(isGroupAddressed({ mentioned: false, text: '吨吨在吗' }, '吨吨'), true)
+  assert.equal(isGroupAddressed({ mentioned: false, text: '小鲸鱼在吗' }, '吨吨'), false)
+  assert.equal(isGroupAddressed({ mentioned: false, text: '喂' }, '吨吨'), false)
+  assert.equal(isGroupAddressed({ mentioned: false, text: '大肥鱼' }, '吨吨'), false)
+  assert.equal(isGroupAddressed({ mentioned: false, text: '小鲸鱼在吗' }, '小鲸鱼'), true)
 })

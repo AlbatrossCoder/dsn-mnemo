@@ -76,5 +76,5 @@ export function renderMindState(state: MindState | undefined): string {
   if (state.energy.trim().length > 0) bits.push(`精力：${state.energy.trim()}`)
   if (state.unresolved.trim().length > 0) bits.push(`还挂着：${state.unresolved.trim()}`)
   if (bits.length === 0) return ''
-  return `【此刻】${bits.join('；')}`
+  return `【此刻】${bits.join('；')}。累、烦或没劲就少说、说半句；不想接下场也可以不接。`
 }

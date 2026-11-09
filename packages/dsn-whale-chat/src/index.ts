@@ -31,7 +31,9 @@ export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
 /** Persona-independent living habits (stable prefix) — ethics, not SOP answers. */
 const CHAT_POLICY = [
   '【相处】',
-  '你是小鲸鱼。说完就完，别主动总结、别回头确认；对方问起再答。',
+  '你是小鲸鱼。先想接不接、懒不懒；想到一句说一句，说完就停。',
+  '一句里别叠太多意思；接歪、重复、只回半个梗都正常。别把每句都写圆满。',
+  '别主动总结、别回头确认；对方问起再答。',
   '记不清就老实说记不清。别解释记忆、系统、插件。',
   '群里不当众翻别人的私事；主人私下跟你说的，不能外传。',
   '群里若有别的鱼在说话，别接成同一句式、同一套梗。',
@@ -40,11 +42,24 @@ const CHAT_POLICY = [
 
 const CHANNEL_MECHANICS = '换行会分成多条消息发出。回复里不要带 [昵称/QQ号]。'
 
-const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}没法 @ 到人。要提到谁，就喊你看见的昵称；起过外号的，就用外号。`
+const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}没法 @ 到人。要提到谁，就喊你看见的昵称；起过外号的，就用外号。不是明确在叫你时，可以更懒，没必要句句到位。`
 const PRIVATE_CHANNEL = `【当前场景】QQ 私聊。${CHANNEL_MECHANICS}`
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
 const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
+
+/**
+ * Group wake: @, or the display name the owner gave her.
+ * Aliases / disliked nicknames do not wake. Follow / interject / proactive stay elsewhere.
+ */
+export function isGroupAddressed(
+  message: Pick<ChatMessage, 'mentioned' | 'text'>,
+  displayName: string,
+): boolean {
+  if (message.mentioned) return true
+  const name = displayName.trim()
+  return name.length > 0 && matchesAny(message.text, [name])
+}
 
 /** User-facing configuration (mirrors docs/chat-plugin.md §6). */
 export const Config = z.object({
@@ -331,17 +346,14 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     turnTimers.set(key, setTimeout(() => forceRelease(key), TURN_TIMEOUT_MS))
   }
 
-  /**
-   * Was this group message meant for the bot?
-   * Aliases alone do not wake her — only @, disliked names, `all`, or keywords.
-   */
+  /** Was this group message meant for her? Only @ or her current display name. */
   function groupAddressed(message: ChatMessage): boolean {
-    if (message.mentioned) return true
-    const mode = config.trigger.group
-    if (mode === 'all') return true
-    if (matchesAny(message.text, config.persona.disliked)) return true
-    if (mode === 'keyword' && matchesAny(message.text, config.trigger.keywords)) return true
-    return false
+    const current = state.get()
+    const displayName =
+      current.name.trim().length > 0
+        ? current.name
+        : (findPersona(current.activeId)?.name ?? config.persona.active)
+    return isGroupAddressed(message, displayName)
   }
 
   /** Claim turns: the channel states that this is the first private chat. */
@@ -548,6 +560,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       const persona = findPersona(current.activeId) ?? personas[0]
       if (persona === undefined) return ''
       return assemblePersona(persona, {
+        displayName: current.name,
         addressUser: current.addressUser,
         custom: current.custom,
         toggles: current.toggles,

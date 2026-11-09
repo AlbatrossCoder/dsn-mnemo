@@ -104,8 +104,35 @@ test('lines that arrive before she speaks wait, then go out together', () => {
   busy = false
   follow.watch('g')
   follow.poke('g')
+  // Held lines still honor debounce / backoff; poke only arms the timer.
+  assert.deepEqual(flushed, [])
+  assert.equal(jobs.length, 1)
+  assert.equal(jobs[0]?.delay, 100)
+  run(0)
   assert.deepEqual(flushed, [[1, 2]])
-  assert.equal(jobs.length, 0)
+})
+
+test('bump slows a held batch that poke releases after a turn', () => {
+  const { scheduler, jobs, run } = fakeScheduler()
+  let busy = true
+  const flushed: number[][] = []
+  const follow = new FollowBuffer<number>({
+    debounceMs: () => 100,
+    isBusy: () => busy,
+    scheduler,
+    onFlush: (_key, messages) => flushed.push([...messages]),
+  })
+  follow.watch('g')
+  follow.offer('g', 1)
+  run(0) // due while busy → held
+  assert.deepEqual(flushed, [])
+  follow.bump('g')
+  busy = false
+  follow.poke('g')
+  assert.deepEqual(flushed, [])
+  assert.equal(jobs[jobs.length - 1]?.delay, 200)
+  run(jobs.length - 1)
+  assert.deepEqual(flushed, [[1]])
 })
 
 test('silence before she has ever spoken drops the lines', () => {
