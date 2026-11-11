@@ -161,3 +161,31 @@ test('a QQ source names the subject before the session row exists', () => {
     db.close()
   }
 })
+
+test('opening turns hide the owner and other groups private diaries', () => {
+  const db = openDatabase(':memory:')
+  try {
+    touchSession(db, 's-group', 1, { kind: 'group', audienceId: 'g1' })
+    insertDiary(db, { subjectKind: 'user', subjectId: '84272166', visibility: 'secret', content: '主人的秘密记忆', importance: 0.9 })
+    insertDiary(db, { subjectKind: 'user', subjectId: '10001', content: '和这个人看了海', importance: 0.9 })
+    insertDiary(db, { subjectKind: 'group', subjectId: 'g1', visibility: 'public', content: '群里约了周末', importance: 0.9 })
+    insertDiary(db, { subjectKind: 'group', subjectId: 'g1', visibility: 'private', content: '群里私下的事', importance: 0.9 })
+    const provider = createProactiveText(db, { limit: 5, now: () => NOW, ownerId: '84272166' })
+    const dm = provider(
+      sessionOf(
+        'q1',
+        [{ id: 'q1', role: 'user', content: [{ type: 'text', text: '在吗' }], source: { kind: 'qq', userId: '10001' } }],
+        'whale-dm',
+      ),
+    )
+    assert.match(dm, /看了海/)
+    assert.doesNotMatch(dm, /秘密/)
+    const group = provider(sessionOf('g1', [user('g1', '大家好')], 's-group'))
+    assert.match(group, /群里约了/)
+    assert.doesNotMatch(group, /秘密/)
+    assert.doesNotMatch(group, /私下/)
+    assert.doesNotMatch(group, /看了海/)
+  } finally {
+    db.close()
+  }
+})

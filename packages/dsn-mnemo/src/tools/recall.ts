@@ -9,8 +9,17 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
+import {
+  buildMemoryAccess,
+  diaryVisible,
+  isMemoryAccess,
+  resolveOwnerId,
+  type MemoryAccess,
+} from '../memory/visibility.js'
 import { searchDiaries, type DiaryHit, type SubjectRef } from '../store/diary-store.js'
-import { searchMessages, sessionSubject } from '../store/message-store.js'
+import { currentScene, searchMessages } from '../store/message-store.js'
+
+type RecallScopeFilter = SubjectRef | MemoryAccess
 
 export type RecallScope = 'diary' | 'log'
 export type RecallSource = RecallScope
@@ -34,6 +43,9 @@ export interface RecallOptions {
   readonly logLimit: number
   /** Clock seam for deterministic tests. */
   readonly now?: () => Date
+  /** Owner QQ. Empty falls back to `statePath` when that path is set. */
+  readonly ownerId?: string
+  readonly statePath?: string
 }
 
 const DAY_MS = 86_400_000
@@ -70,18 +82,26 @@ export function rankDiaryHits(hits: readonly DiaryHit[], limit: number, now: Dat
     .slice(0, limit)
 }
 
+function diaryAllowed(scope: RecallScopeFilter | undefined, hit: DiaryHit): boolean {
+  if (scope !== undefined && isMemoryAccess(scope)) {
+    return diaryVisible(scope, {
+      subjectKind: hit.subjectKind,
+      subjectId: hit.subjectId,
+      visibility: hit.visibility,
+    })
+  }
+  return scope?.kind !== 'group' || hit.visibility !== 'secret'
+}
+
 /** Rank diaries by BM25, importance, and recency. */
 export function rankDiaries(
   db: DatabaseSync,
   query: string,
   limit: number,
   now = new Date(),
-  subject?: SubjectRef,
+  scope?: RecallScopeFilter,
 ): RecallHit[] {
-  const hits = searchDiaries(db, query, limit * 2, 'and', subject).filter(
-    // `secret` never appears in a group, even when the query matches.
-    (hit) => subject?.kind !== 'group' || hit.visibility !== 'secret',
-  )
+  const hits = searchDiaries(db, query, limit * 2, 'and', scope).filter((hit) => diaryAllowed(scope, hit))
   return rankDiaryHits(hits, limit, now)
 }
 
@@ -98,9 +118,9 @@ export function rankLogs(
   limit: number,
   now = new Date(),
   excludeSessionId?: string,
-  subject?: SubjectRef,
+  scope?: RecallScopeFilter,
 ): RecallHit[] {
-  const hits = searchMessages(db, query, limit * 5, subject).filter(
+  const hits = searchMessages(db, query, limit * 5, scope).filter(
     (hit) =>
       hit.sessionId !== excludeSessionId &&
       // Tool-call echoes make a recall query match its own call record; they are
@@ -151,12 +171,12 @@ export function recall(
   limit: number,
   now = new Date(),
   excludeSessionId?: string,
-  subject?: SubjectRef,
+  filter?: RecallScopeFilter,
 ): RecallHit[] {
   try {
     return scope === 'log'
-      ? rankLogs(db, query, limit, now, excludeSessionId, subject)
-      : rankDiaries(db, query, limit, now, subject)
+      ? rankLogs(db, query, limit, now, excludeSessionId, filter)
+      : rankDiaries(db, query, limit, now, filter)
   } catch {
     return []
   }
@@ -225,8 +245,14 @@ export function createRecallTool(db: DatabaseSync, options: RecallOptions) {
       const fallback = scope === 'log' ? options.logLimit : options.diaryLimit
       const limit = typeof args.limit === 'number' && args.limit > 0 ? Math.min(args.limit, 50) : fallback
       const sessionId = exec.agent?.session.id
-      const subject = sessionId === undefined ? undefined : sessionSubject(db, sessionId)
-      return { scope, results: recall(db, args.query, scope, limit, now(), sessionId, subject) }
+      const filter =
+        sessionId === undefined
+          ? undefined
+          : buildMemoryAccess(
+              currentScene(db, sessionId, exec.agent?.session.deriveMessages?.() ?? []),
+              resolveOwnerId(options),
+            )
+      return { scope, results: recall(db, args.query, scope, limit, now(), sessionId, filter) }
     },
   })
 }

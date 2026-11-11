@@ -34,8 +34,8 @@
         "zh": "dsn-mnemo 记忆运行时"
       },
       "description": {
-        "en": "Persistent memory runtime for DeepSeek Harness: L0 logs, L1 diaries, L2 working state, L3 anchors.",
-        "zh": "DSH 的跨会话记忆：L0 全量日志、L1 日记、L2 工作层、L3 锚点。"
+        "en": "Persistent memory runtime for DeepSeek Harness: L0 logs, Episode diaries, State/Bond mind layers, anchors.",
+        "zh": "DSH 的跨会话记忆：L0 原文、Episode 日记、State/Bond 心智层、锚点。"
       },
       "author": "AlbatrossCoder",
       "homepage": "https://github.com/AlbatrossCoder/dsn-mnemo",
@@ -56,6 +56,26 @@
         ]
       },
       "versions": [
+        {
+          "version": "0.9.2",
+          "publishTimestamp": 1794197600,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "^0.2.1-rc.5"
+          }
+        },
+        {
+          "version": "0.9.0",
+          "publishTimestamp": 1793945689,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "^0.2.1-rc.5"
+          }
+        },
         {
           "version": "0.7.1",
           "publishTimestamp": 1793705954,

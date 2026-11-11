@@ -7,7 +7,8 @@ import { appendFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { openDatabase } from './db/database.js'
-import { createPendingDiaryText } from './diary/pending.js'
+import { createPendingDiaryText, createPendingMindText } from './diary/pending.js'
+import { createMindText } from './inject/mind.js'
 import { createPortraitText } from './inject/portrait.js'
 import { createProactiveText } from './inject/proactive.js'
 import { formatDate, renderAnchorLines, renderStablePrefix } from './inject/stable-prefix.js'
@@ -17,6 +18,7 @@ import { sessionSubject, subjectFromMessages } from './store/message-store.js'
 import { createAnchorTool } from './tools/anchor-upsert.js'
 import { createDiaryUpdateTool, createDiaryWriteTool } from './tools/diary-write.js'
 import { createForgetTool } from './tools/forget.js'
+import { createMindUpdateTool } from './tools/mind-update.js'
 import { createPortraitWriteTool } from './tools/portrait-write.js'
 import { createRecallTool } from './tools/recall.js'
 
@@ -51,7 +53,7 @@ export const Config = z.object({
 
 export type MnemoConfig = Schemastery.TypeT<typeof Config>
 
-const VERSION = '0.8.2'
+const VERSION = '0.9.0'
 
 /**
  * Record a failure where a human can find it. The loader reports plugin
@@ -88,6 +90,7 @@ export function apply(ctx: Context, config: MnemoConfig): void {
 function setup(ctx: Context, config: MnemoConfig): void {
   const db = openDatabase(config.dbPath)
   const recorder = new SessionRecorder(db, { storeReasoning: config.storeReasoning })
+  const owner = { ownerId: config.ownerId, statePath: join(homedir(), '.dsh', 'whale-chat-state.json') }
 
   ctx.effect(() => () => db.close())
 
@@ -131,28 +134,43 @@ function setup(ctx: Context, config: MnemoConfig): void {
     createRecallTool(db, {
       diaryLimit: config.recallDiaryLimit,
       logLimit: config.recallLogLimit,
+      ownerId: owner.ownerId,
+      statePath: owner.statePath,
     }),
   )
   ctx.tools.register(createAnchorTool(db))
-  ctx.tools.register(createDiaryWriteTool(db))
+  ctx.tools.register(createDiaryWriteTool(db, owner))
   ctx.tools.register(createDiaryUpdateTool(db))
+  ctx.tools.register(createMindUpdateTool(db))
   ctx.tools.register(createForgetTool(db))
-  ctx.tools.register(createPortraitWriteTool(db, { ownerId: config.ownerId }))
+  ctx.tools.register(createPortraitWriteTool(db, { ownerId: config.ownerId, statePath: owner.statePath }))
 
   // Dynamic context: proactive recall + a pending-diary hint, both replaced
   // every turn (never accumulated) and living outside the cached stable prefix.
   const proactive = createProactiveText(db, {
     limit: config.contextRecallLimit,
     tokenBudget: config.contextRecallTokens,
+    ownerId: owner.ownerId,
+    statePath: owner.statePath,
   })
   const portraits = createPortraitText(db)
-  const pending = createPendingDiaryText(db, {
+  const mind = createMindText(db)
+  const pendingOptions = {
     idleMs: config.diaryIdleMinutes * 60_000,
     maxTurns: config.diaryMaxTurns,
     maxChars: config.diaryMaxChars,
-  })
+    owner,
+  }
+  const pending = createPendingDiaryText(db, pendingOptions)
+  const pendingMind = createPendingMindText(db, pendingOptions)
 
   ctx.on('agent/created', ({ agent }: { agent: Agent }) => {
+    agent.ctx.systemPrompt.context({
+      name: 'mnemo:mind',
+      order: 36,
+      interpolate: false,
+      text: () => mind(agent.session),
+    })
     agent.ctx.systemPrompt.context({
       name: 'mnemo:portrait',
       order: 38,
@@ -185,7 +203,13 @@ function setup(ctx: Context, config: MnemoConfig): void {
       name: 'mnemo:pending',
       order: 45,
       interpolate: false,
-      text: () => pending(agent.session),
+      text: () => {
+        const diary = pending(agent.session)
+        const mindHint = pendingMind(agent.session)
+        if (diary.length === 0) return mindHint
+        if (mindHint.length === 0) return diary
+        return `${diary}\n${mindHint}`
+      },
     })
   })
 }

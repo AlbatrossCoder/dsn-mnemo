@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { openDatabase } from '../db/database.js'
+import { upsertBond } from '../store/bond-store.js'
 import { insertDiary } from '../store/diary-store.js'
+import { markDiaryPrompted } from '../store/ledger-store.js'
 import { insertMessage, touchSession } from '../store/message-store.js'
 import { writePortrait } from '../store/portrait-store.js'
+import { upsertMindState } from '../store/state-store.js'
 import { upsertAnchor } from '../store/anchor-store.js'
 import { createForgetTool } from './forget.js'
 
@@ -23,6 +26,12 @@ test('forget erases one subject and leaves the others alone', async () => {
     writePortrait(db, { kind: 'member', id: 'grp-1:user-9', part: 'short', content: '群友' })
     writePortrait(db, { kind: 'user', id: 'user-1', part: 'long', content: '私聊画像' })
     writePortrait(db, { kind: 'member', id: 'other:user-1', part: 'short', content: '别处的群友' })
+    upsertMindState(db, { subject: { kind: 'group', id: 'grp-1' }, mood: '热闹' })
+    upsertMindState(db, { subject: { kind: 'user', id: 'user-1' }, mood: '安静' })
+    upsertBond(db, { subject: { kind: 'group', id: 'grp-1' }, peerId: 'user-9', label: '群友' })
+    upsertBond(db, { subject: { kind: 'user', id: 'user-1' }, peerId: 'user-1', label: '你' })
+    markDiaryPrompted(db, { kind: 'group', id: 'grp-1' })
+    markDiaryPrompted(db, { kind: 'user', id: 'user-1' })
 
     const tool = createForgetTool(db)
     const result = (await tool.execute(
@@ -48,6 +57,18 @@ test('forget erases one subject and leaves the others alone', async () => {
       { subject_kind: 'member', subject_id: 'other:user-1' },
       { subject_kind: 'user', subject_id: 'user-1' },
     ])
+    assert.equal((db.prepare('select count(*) as n from mind_states').get() as { n: number }).n, 1)
+    assert.equal(
+      (db.prepare('select subject_id from mind_states').get() as { subject_id: string }).subject_id,
+      'user-1',
+    )
+    assert.equal((db.prepare('select count(*) as n from bonds').get() as { n: number }).n, 1)
+    assert.equal((db.prepare('select subject_id from bonds').get() as { subject_id: string }).subject_id, 'user-1')
+    assert.equal((db.prepare('select count(*) as n from subject_ledger').get() as { n: number }).n, 1)
+    assert.equal(
+      (db.prepare('select subject_id from subject_ledger').get() as { subject_id: string }).subject_id,
+      'user-1',
+    )
   } finally {
     db.close()
   }

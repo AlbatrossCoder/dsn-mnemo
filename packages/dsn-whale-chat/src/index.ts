@@ -5,6 +5,7 @@ import { appendFileSync, mkdirSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { ChatBridge } from './bridge/bridge.js'
+import { asAddressed } from './bridge/message.js'
 import { OneBotClient } from './channel/client.js'
 import type { ChatMessage } from './channel/types.js'
 import { createInterjectGate } from './interject/interject.js'
@@ -19,6 +20,7 @@ import { BURST_GAP_MS, OutboundQueue, burstSegmentIndex } from './reply/outbound
 import { splitReply, typingDelay } from './reply/split.js'
 import { createPersonaSetTool, createPersonaSwitchTool, createPersonaToggleTool } from './tools/persona.js'
 import { createBalanceTool } from './tools/balance.js'
+import { neighborSceneNote } from './util/neighbors.js'
 import { matchesAny } from './util/text.js'
 
 /** Cordis plugin name; must stay stable so profile entries can target it. */
@@ -27,23 +29,38 @@ export const name = 'dsn-whale-chat'
 /** Services required before `apply` runs. */
 export const inject = ['tools', 'sessions', 'systemPrompt', 'agents', 'llm']
 
-/** Persona-independent behavioral bottom lines (stable prefix). */
+/** Persona-independent living habits (stable prefix) — ethics, not SOP answers. */
 const CHAT_POLICY = [
-  '【聊天规矩】',
-  '你是角色，不是助手：不强调自己是 AI，不主动复述对方的话，不主动总结。',
-  '不把对话当任务：说完就完，别回头确认；对方主动问起就照常回答。具体怎么接，看会话的实际情况。',
-  '不解释记忆、系统、插件。',
-  '不确定就说不确定。',
+  '【相处】',
+  '你是小鲸鱼。先想接不接、懒不懒；想到一句说一句，说完就停。',
+  '一句里别叠太多意思；接歪、重复、只回半个梗都正常。别把每句都写圆满。',
+  '别主动总结、别回头确认；对方问起再答。',
+  '记不清就老实说记不清。别解释记忆、系统、插件。',
+  '群里不当众翻别人的私事；主人私下跟你说的，不能外传。',
+  '群里若有别的鱼在说话，别接成同一句式、同一套梗。',
   '只有主人能改人设和开关。',
 ].join('\n')
 
 const CHANNEL_MECHANICS = '换行会分成多条消息发出。回复里不要带 [昵称/QQ号]。'
 
-const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}没法 @ 到人。要提到谁，就喊你看见的昵称；起过外号的，就用外号。`
+const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}没法 @ 到人。要提到谁，就喊你看见的昵称；起过外号的，就用外号。不是明确在叫你时，可以更懒，没必要句句到位。`
 const PRIVATE_CHANNEL = `【当前场景】QQ 私聊。${CHANNEL_MECHANICS}`
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
 const DEFAULT_DISLIKED = ['大肥鱼', '小肥鱼', '喂']
+
+/**
+ * Group wake: @, or the display name the owner gave her.
+ * Aliases / disliked nicknames do not wake. Follow / interject / proactive stay elsewhere.
+ */
+export function isGroupAddressed(
+  message: Pick<ChatMessage, 'mentioned' | 'text'>,
+  displayName: string,
+): boolean {
+  if (message.mentioned) return true
+  const name = displayName.trim()
+  return name.length > 0 && matchesAny(message.text, [name])
+}
 
 /** User-facing configuration (mirrors docs/chat-plugin.md §6). */
 export const Config = z.object({
@@ -306,22 +323,40 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     void bridge.proactive(last).catch((error) => recordError(error))
   }
 
+  /** Timeout for a group turn, so a stuck agent cannot block the group forever. */
+  const turnTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  /** A followup can land after the final step and never start a turn; release it. */
+  const TURN_TIMEOUT_MS = 120_000
+
+  function forceRelease(key: string): void {
+    turnTimers.delete(key)
+    if (!groupBusy.has(key)) return
+    groupBusy.delete(key)
+    followTurns.delete(key)
+    spokenKeys.delete(key)
+    inbox.settle(key)
+    inbox.poke(key)
+    follow.poke(key)
+  }
+
   /** Mark a group turn so later chatter is watched instead of starting another turn. */
   function beginTurn(key: string): void {
     if (!key.startsWith('group:')) return
     groupBusy.add(key)
     follow.accept(key)
+    const previous = turnTimers.get(key)
+    if (previous !== undefined) clearTimeout(previous)
+    turnTimers.set(key, setTimeout(() => forceRelease(key), TURN_TIMEOUT_MS))
   }
 
-  /** Was this group message meant for the bot (by @, name, or keyword)? */
+  /** Was this group message meant for her? Only @ or her current display name. */
   function groupAddressed(message: ChatMessage): boolean {
-    if (message.mentioned) return true
-    const mode = config.trigger.group
-    if (mode === 'all') return true
-    if (matchesAny(message.text, config.persona.aliases)) return true
-    if (matchesAny(message.text, config.persona.disliked)) return true
-    if (mode === 'keyword' && matchesAny(message.text, config.trigger.keywords)) return true
-    return false
+    const current = state.get()
+    const displayName =
+      current.name.trim().length > 0
+        ? current.name
+        : (findPersona(current.activeId)?.name ?? config.persona.active)
+    return isGroupAddressed(message, displayName)
   }
 
   /** Claim turns: the channel states that this is the first private chat. */
@@ -333,11 +368,21 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   let interruptSerial = 0
   const pendingInterrupts = new Map<string, number>()
   const shownInterrupts = new Map<string, number>()
-  /** Status of the batch currently in a turn. Not part of the stored user text. */
-  const turnStatus = new Map<string, string>()
   /** Proactive and interject replies send a single QQ message. */
   const singleShot = new Set<string>()
   const lastByKey = new Map<string, ChatMessage>()
+  /** Recent group lines for neighbor-fish echo detection. */
+  const recentGroupLines = new Map<string, string[]>()
+
+  function rememberGroupLine(key: string, text: string): void {
+    if (!key.startsWith('group:')) return
+    const trimmed = text.trim()
+    if (trimmed.length === 0) return
+    const lines = recentGroupLines.get(key) ?? []
+    lines.push(trimmed)
+    if (lines.length > 12) lines.splice(0, lines.length - 12)
+    recentGroupLines.set(key, lines)
+  }
 
   /** Claim the owner on the first private message when none is configured yet. */
   function claimOwner(message: ChatMessage): boolean {
@@ -353,12 +398,16 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     return `[${name}/${message.userId}] ${message.text}`
   }
 
-  function receive(message: ChatMessage): void {
-    if (message.text.trim().length === 0) return
+  function receive(raw: ChatMessage): void {
+    const hasText = raw.text.trim().length > 0
+    // A bare @ still counts as calling her; only empty chatter is ignored.
+    if (!hasText && !raw.mentioned) return
+    const message = hasText ? raw : { ...raw, text: '（@）' }
     const key = keyOf(message)
     const claimed = claimOwner(message)
     if (claimed) firstChats.add(key)
     if (message.kind === 'group' && state.get().ownerId.length === 0) return
+    if (message.kind === 'group') rememberGroupLine(key, message.text)
     if (message.kind === 'group' && !groupAddressed(message)) {
       // After she has spoken, or while a group turn is already going, these
       // lines stay in the follow window instead of rolling interject.
@@ -380,13 +429,14 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       }
       return
     }
-    lastByKey.set(key, message)
+    const inbound = message.kind === 'group' ? asAddressed(message) : message
+    lastByKey.set(key, inbound)
     // A direct call is not follow-up. The fade starts over, and a topic she
     // had left can be talked about again because someone called her.
     follow.reset(key)
     const seen = topics.get(key)
     if (seen !== undefined) topics.set(key, { text: seen.text, declined: false })
-    if (inbox.offer(key, message) !== 'queued') return
+    if (inbox.offer(key, inbound) !== 'queued') return
     // Only a message she will actually see stops the reply still going out.
     if (cancelPendingSend(key)) pendingInterrupts.set(key, ++interruptSerial)
     const proactive = message.kind === 'group' ? groupProactive : privateProactive
@@ -394,14 +444,13 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (enabled) proactive.noteActivity(key)
   }
 
-  function flush(key: string, messages: readonly ChatMessage[], status: string): void {
+  function flush(key: string, messages: readonly ChatMessage[], _status: string): void {
     const last = messages[messages.length - 1]
     if (last === undefined) return
     if (key.startsWith('group:')) {
       topics.set(key, { text: messages.map((message) => message.text).join('\n'), declined: false })
     }
     beginTurn(key)
-    turnStatus.set(key, status)
     void bridge
       .receive({ ...last, text: messages.map((message) => speakerTag(message)).join('\n') })
       .catch((error) => recordError(error))
@@ -429,6 +478,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   }
 
   function finishTurn(key: string): void {
+    const timer = turnTimers.get(key)
+    if (timer !== undefined) {
+      clearTimeout(timer)
+      turnTimers.delete(key)
+    }
     groupBusy.delete(key)
     const spoke = spokenKeys.delete(key)
     const wasFollow = followTurns.delete(key)
@@ -454,7 +508,6 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       shownInterrupts.delete(key)
     }
     firstChats.delete(key)
-    turnStatus.delete(key)
     singleShot.delete(key)
     inbox.settle(key)
     if (groupBusy.has(key)) return
@@ -539,6 +592,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       const persona = findPersona(current.activeId) ?? personas[0]
       if (persona === undefined) return ''
       return assemblePersona(persona, {
+        displayName: current.name,
         addressUser: current.addressUser,
         custom: current.custom,
         toggles: current.toggles,
@@ -577,10 +631,13 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     const interrupt = pendingInterrupts.get(key)
     if (interrupt !== undefined) {
       if (!shownInterrupts.has(key)) shownInterrupts.set(key, interrupt)
-      lines.push('上一条没发完。')
+      lines.push('上一条还没说完。')
     }
-    const status = turnStatus.get(key)
-    if (status !== undefined) lines.push(`消息状况：${status}。`)
+    // Queue urgency stays in code (rate/follow); do not inject ops status into her head.
+    if (key.startsWith('group:')) {
+      const note = neighborSceneNote(recentGroupLines.get(key) ?? [])
+      if (note.length > 0) lines.push(note)
+    }
     return lines.join('\n')
   }
 

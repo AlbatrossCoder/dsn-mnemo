@@ -13,6 +13,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { CHAR_FALLBACK_RANK, CHAR_FALLBACK_SCAN_LIMIT, cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
+import { diaryAccessClause, isMemoryAccess, type MemoryAccess } from '../memory/visibility.js'
 
 export type SubjectKind = 'user' | 'group'
 export type Visibility = 'public' | 'private' | 'secret'
@@ -128,7 +129,7 @@ export function countDiariesForToday(db: DatabaseSync, subject: SubjectRef): num
  * @param query - raw query; segmented with the same tokenizer as the index.
  * @param limit - maximum hits after ordering.
  * @param mode - `and` for short keyword queries, `or` for whole sentences.
- * @param subject - restrict to one person or one group; omit for a global scan.
+ * @param scope - one subject, or a {@link MemoryAccess} union; omit for a global scan.
  * @returns hits ordered best-first; an empty array when nothing is searchable.
  */
 export function searchDiaries(
@@ -136,7 +137,7 @@ export function searchDiaries(
   query: string,
   limit = 5,
   mode: 'and' | 'or' = 'and',
-  subject?: SubjectRef,
+  scope?: SubjectRef | MemoryAccess,
 ): DiaryHit[] {
   const hits: DiaryHit[] = []
   const seen = new Set<number>()
@@ -149,9 +150,18 @@ export function searchDiaries(
   }
 
   const match = mode === 'or' ? buildAnyMatchQuery(query) : buildMatchQuery(query)
-  if (match !== null) push(searchDiariesByMatch(db, match, limit, subject))
-  if (hits.length < limit) push(searchDiariesByCharacters(db, query, limit, subject))
+  if (match !== null) push(searchDiariesByMatch(db, match, limit, scope))
+  if (hits.length < limit) push(searchDiariesByCharacters(db, query, limit, scope))
   return hits.slice(0, limit)
+}
+
+function diaryScopeSql(scope: SubjectRef | MemoryAccess | undefined, alias: string): { sql: string; params: string[] } {
+  if (scope === undefined) return { sql: '', params: [] }
+  if (isMemoryAccess(scope)) return diaryAccessClause(scope, alias)
+  return {
+    sql: `and ${alias}subject_kind = ? and ${alias}subject_id = ?`,
+    params: [scope.kind, scope.id],
+  }
 }
 
 /**
@@ -167,19 +177,18 @@ function searchDiariesByCharacters(
   db: DatabaseSync,
   query: string,
   limit: number,
-  subject?: SubjectRef,
+  scope?: SubjectRef | MemoryAccess,
 ): DiaryHit[] {
   const chars = cjkChars(query)
   if (chars.length < 2) return []
   const where = chars.map(() => 'content like ?').join(' or ')
-  const subjectSql = subject === undefined ? '' : 'and subject_kind = ? and subject_id = ?'
-  const params: Array<string | number> = chars.map((char) => `%${char}%`)
-  if (subject !== undefined) params.push(subject.kind, subject.id)
+  const filter = diaryScopeSql(scope, '')
+  const params: Array<string | number> = [...chars.map((char) => `%${char}%`), ...filter.params]
   const rows = db
     .prepare(
       `select id, content, importance, emotion, type_tags, subject_kind, subject_id, visibility, created_at, ${CHAR_FALLBACK_RANK} as rank
          from diaries
-        where (${where}) ${subjectSql}
+        where (${where}) ${filter.sql}
         order by id desc
         limit ${CHAR_FALLBACK_SCAN_LIMIT}`,
     )
@@ -200,18 +209,16 @@ function searchDiariesByCharacters(
  * Run a pre-built FTS5 MATCH expression, e.g. an OR query for whole sentences.
  *
  * @param match - quoted FTS5 expression produced by `segment.ts` helpers.
- * @param subject - restrict to one person or one group.
+ * @param scope - one subject, or a scene access union.
  */
 export function searchDiariesByMatch(
   db: DatabaseSync,
   match: string,
   limit = 5,
-  subject?: SubjectRef,
+  scope?: SubjectRef | MemoryAccess,
 ): DiaryHit[] {
-  const subjectSql = subject === undefined ? '' : 'and d.subject_kind = ? and d.subject_id = ?'
-  const params: Array<string | number> = [match]
-  if (subject !== undefined) params.push(subject.kind, subject.id)
-  params.push(limit)
+  const filter = diaryScopeSql(scope, 'd.')
+  const params: Array<string | number> = [match, ...filter.params, limit]
   const rows = db
     .prepare(
       `select d.id, d.content, d.importance, d.emotion, d.type_tags,
@@ -219,7 +226,7 @@ export function searchDiariesByMatch(
               bm25(diaries_fts) as rank
          from diaries_fts
          join diaries d on d.id = diaries_fts.rowid
-        where diaries_fts match ? ${subjectSql}
+        where diaries_fts match ? ${filter.sql}
         order by rank
         limit ?`,
     )
@@ -228,9 +235,22 @@ export function searchDiariesByMatch(
   return rows.map((row) => toHit(row))
 }
 
-/** Newest diaries for one subject. Group rows are public-only. */
-export function recentDiaries(db: DatabaseSync, subject: SubjectRef, limit: number): DiaryHit[] {
-  const visibility = subject.kind === 'group' ? "and visibility = 'public'" : ''
+/** Newest diaries for one subject, or for a scene's access union. Group rows are public-only. */
+export function recentDiaries(db: DatabaseSync, scope: SubjectRef | MemoryAccess, limit: number): DiaryHit[] {
+  if (isMemoryAccess(scope)) {
+    const filter = diaryScopeSql(scope, '')
+    const rows = db
+      .prepare(
+        `select id, content, importance, emotion, type_tags, subject_kind, subject_id, visibility, created_at, 0 as rank
+           from diaries
+          where 1 = 1 ${filter.sql}
+          order by created_at desc, id desc
+          limit ?`,
+      )
+      .all(...filter.params, limit) as unknown as DiaryRow[]
+    return rows.map((row) => toHit(row))
+  }
+  const visibility = scope.kind === 'group' ? "and visibility = 'public'" : ''
   const rows = db
     .prepare(
       `select id, content, importance, emotion, type_tags, subject_kind, subject_id, visibility, created_at, 0 as rank
@@ -239,6 +259,6 @@ export function recentDiaries(db: DatabaseSync, subject: SubjectRef, limit: numb
         order by created_at desc, id desc
         limit ?`,
     )
-    .all(subject.kind, subject.id, limit) as unknown as DiaryRow[]
+    .all(scope.kind, scope.id, limit) as unknown as DiaryRow[]
   return rows.map((row) => toHit(row))
 }

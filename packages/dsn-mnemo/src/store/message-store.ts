@@ -10,6 +10,7 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { CHAR_FALLBACK_RANK, CHAR_FALLBACK_SCAN_LIMIT, cjkChars } from '../db/char-search.js'
 import { buildAnyMatchQuery, buildMatchQuery, segment } from '../db/segment.js'
+import { isMemoryAccess, sessionAccessClause, type MemoryAccess } from '../memory/visibility.js'
 import type { SubjectRef } from './diary-store.js'
 
 export type MessageRole = 'user' | 'assistant' | 'tool'
@@ -95,6 +96,15 @@ export function subjectFromMessages(messages: readonly unknown[]): { kind: 'user
   return undefined
 }
 
+/** Live QQ scene when the prompt is built before the session row is written. */
+export function currentScene(
+  db: DatabaseSync,
+  sessionId: string,
+  messages: readonly unknown[],
+): { kind: 'user' | 'group'; id: string } {
+  return subjectFromMessages(messages) ?? sessionSubject(db, sessionId)
+}
+
 /** Conversation identity carried by a session row. */
 export function sessionSubject(db: DatabaseSync, sessionId: string): { kind: 'user' | 'group'; id: string } {
   const row = db.prepare('select kind, audience_id from sessions where id = ?').get(sessionId) as
@@ -149,7 +159,7 @@ export function searchMessages(
   db: DatabaseSync,
   query: string,
   limit = 5,
-  subject?: SubjectRef,
+  scope?: SubjectRef | MemoryAccess,
 ): MessageHit[] {
   const hits: MessageHit[] = []
   const seen = new Set<number>()
@@ -162,22 +172,23 @@ export function searchMessages(
   }
 
   const andMatch = buildMatchQuery(query)
-  if (andMatch !== null) push(searchMessagesByMatch(db, andMatch, limit, subject))
+  if (andMatch !== null) push(searchMessagesByMatch(db, andMatch, limit, scope))
 
   if (hits.length < limit) {
     const orMatch = buildAnyMatchQuery(query)
-    if (orMatch !== null) push(searchMessagesByMatch(db, orMatch, limit, subject))
+    if (orMatch !== null) push(searchMessagesByMatch(db, orMatch, limit, scope))
   }
 
-  if (hits.length < limit) push(searchMessagesByCharacters(db, query, limit, subject))
+  if (hits.length < limit) push(searchMessagesByCharacters(db, query, limit, scope))
   return hits.slice(0, limit)
 }
 
-function subjectClause(subject: SubjectRef | undefined): { sql: string; params: Array<string | number> } {
-  if (subject === undefined) return { sql: '', params: [] }
+function subjectClause(scope: SubjectRef | MemoryAccess | undefined): { sql: string; params: string[] } {
+  if (scope === undefined) return { sql: '', params: [] }
+  if (isMemoryAccess(scope)) return sessionAccessClause(scope)
   return {
     sql: 'and s.kind = ? and s.audience_id = ?',
-    params: [subject.kind === 'group' ? 'group' : 'dm', subject.id],
+    params: [scope.kind === 'group' ? 'group' : 'dm', scope.id],
   }
 }
 
@@ -185,9 +196,9 @@ function searchMessagesByMatch(
   db: DatabaseSync,
   match: string,
   limit: number,
-  subject?: SubjectRef,
+  scope?: SubjectRef | MemoryAccess,
 ): MessageHit[] {
-  const filter = subjectClause(subject)
+  const filter = subjectClause(scope)
   const rows = db
     .prepare(
       `select m.id, m.session_id, m.seq, m.turn, m.role, m.speaker_id, m.content, m.created_at,
@@ -208,12 +219,12 @@ function searchMessagesByCharacters(
   db: DatabaseSync,
   query: string,
   limit: number,
-  subject?: SubjectRef,
+  scope?: SubjectRef | MemoryAccess,
 ): MessageHit[] {
   const chars = cjkChars(query)
   if (chars.length < 2) return []
   const where = chars.map(() => 'm.content like ?').join(' or ')
-  const filter = subjectClause(subject)
+  const filter = subjectClause(scope)
   const rows = db
     .prepare(
       `select m.id, m.session_id, m.seq, m.turn, m.role, m.speaker_id, m.content, m.created_at, ${CHAR_FALLBACK_RANK} as rank

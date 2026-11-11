@@ -11,13 +11,14 @@
  * 2. the query is the recent topic segment, not a single message;
  * 3. hits below the threshold, or already shown within the cooldown, are dropped;
  * 4. results are capped by item count and token budget, and can be empty;
- * 5. group chats auto-inject `public` memories only; `private`/`secret` never.
+ * 5. hits follow the scene's read rules (a group sees only its own public diaries).
  *
  * @module dsn-mnemo/inject/proactive
  */
 import type { DatabaseSync } from 'node:sqlite'
-import { recentDiaries, searchDiaries } from '../store/diary-store.js'
-import { sessionSubject, subjectFromMessages } from '../store/message-store.js'
+import { buildMemoryAccess, diaryVisible, resolveOwnerId } from '../memory/visibility.js'
+import { recentDiaries, searchDiaries, type DiaryHit } from '../store/diary-store.js'
+import { currentScene } from '../store/message-store.js'
 import { estimateTokens, rankDiaryHits, type RecallHit } from '../tools/recall.js'
 import { buildProactiveQuery, type WindowMessage } from './window.js'
 
@@ -37,6 +38,9 @@ export interface ProactiveOptions {
   /** Turns before the same memory may be shown again; defaults to 10. */
   readonly cooldownTurns?: number
   readonly now?: () => Date
+  /** Owner QQ. Empty falls back to `statePath` when that path is set. */
+  readonly ownerId?: string
+  readonly statePath?: string
 }
 
 const MAX_LINE = 140
@@ -112,24 +116,25 @@ export function createProactiveText(
     const turnIndex = previous === undefined || previous.lastId !== lastId ? (previous?.index ?? 0) + 1 : previous.index
     turns.set(session.id, { lastId, index: turnIndex })
 
-    const subject = subjectFromMessages(messages) ?? sessionSubject(db, session.id)
+    const access = buildMemoryAccess(currentScene(db, session.id, messages), resolveOwnerId(options))
     const query = buildProactiveQuery(messages, { maxMessages: 16, maxChars: 300 })
     let text = ''
     if (turnIndex <= 2) {
-      const hits = recentDiaries(db, subject, Math.min(5, options.limit)).map((hit) => ({
-        source: 'diary' as const,
-        id: hit.id,
-        text: hit.content,
-        score: 1,
-        when: hit.createdAt,
-      }))
+      const hits = recentDiaries(db, access, Math.min(5, options.limit))
+        .filter((hit) => diaryReadable(access, hit))
+        .map((hit) => ({
+          source: 'diary' as const,
+          id: hit.id,
+          text: hit.content,
+          score: 1,
+          when: hit.createdAt,
+        }))
       const capped = capHits(hits, Math.min(5, options.limit), tokenBudget)
       if (capped.length > 0) text = renderProactive(capped)
     } else if (query.tokens.length >= 2) {
       const at = now()
-      const diaryHits = searchDiaries(db, query.text, options.limit * 2, 'or', subject).filter(
-        // Auto-injection in a group is public-only.
-        (hit) => subject.kind !== 'group' || hit.visibility === 'public',
+      const diaryHits = searchDiaries(db, query.text, options.limit * 2, 'or', access).filter((hit) =>
+        diaryReadable(access, hit),
       )
 
       const cooldown = cooldowns.get(session.id) ?? new Map<string, number>()
@@ -160,4 +165,12 @@ export function createProactiveText(
     }
     return text
   }
+}
+
+function diaryReadable(access: ReturnType<typeof buildMemoryAccess>, hit: DiaryHit): boolean {
+  return diaryVisible(access, {
+    subjectKind: hit.subjectKind,
+    subjectId: hit.subjectId,
+    visibility: hit.visibility,
+  })
 }

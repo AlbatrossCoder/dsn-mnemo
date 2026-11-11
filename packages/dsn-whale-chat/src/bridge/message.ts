@@ -29,6 +29,15 @@ export function conversationKey(message: ChatMessage): string {
   return message.kind === 'group' ? `group:${message.groupId}` : `user:${message.userId}`
 }
 
+/**
+ * Group messages that passed the address check must be stored as addressed,
+ * even when the trigger was a name or a keyword rather than an @.
+ */
+export function asAddressed(message: ChatMessage): ChatMessage {
+  if (message.kind !== 'group' || message.mentioned) return message
+  return { ...message, mentioned: true }
+}
+
 /** Build the identified user message the agent will receive. */
 export function toUserMessage(message: ChatMessage) {
   return createUserMessage({

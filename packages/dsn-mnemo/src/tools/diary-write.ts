@@ -11,8 +11,17 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { DatabaseSync } from 'node:sqlite'
 import { segment } from '../db/segment.js'
 import { DIARY_GUIDANCE } from '../inject/stable-prefix.js'
-import { insertDiary } from '../store/diary-store.js'
-import { sessionSubject } from '../store/message-store.js'
+import { resolveOwnerId } from '../memory/visibility.js'
+import { insertDiary, type Visibility } from '../store/diary-store.js'
+import { markDiaryWritten } from '../store/ledger-store.js'
+import { currentScene } from '../store/message-store.js'
+
+export interface DiaryWriteOptions {
+  /** When non-empty, this user id's diaries are forced to `secret`. */
+  readonly ownerId?: string
+  /** Whale-chat state file, read only when `ownerId` is empty. */
+  readonly statePath?: string
+}
 
 interface ExistingDiary {
   id: number
@@ -20,7 +29,7 @@ interface ExistingDiary {
 }
 
 /** Build the registry-ready `diary_write` tool bound to one database. */
-export function createDiaryWriteTool(db: DatabaseSync) {
+export function createDiaryWriteTool(db: DatabaseSync, options: DiaryWriteOptions = {}) {
   return defineTool({
     name: 'diary_write',
     description: DIARY_GUIDANCE,
@@ -64,13 +73,18 @@ export function createDiaryWriteTool(db: DatabaseSync) {
         .filter((tag) => tag.length > 0)
         .slice(0, 3)
       const sessionId = exec.agent?.session.id
-      const subject = sessionId === undefined ? undefined : sessionSubject(db, sessionId)
-      const visibility =
+      const messages = exec.agent?.session.deriveMessages?.() ?? []
+      const subject = sessionId === undefined ? undefined : currentScene(db, sessionId, messages)
+      let visibility: Visibility =
         args.visibility === 'public' || args.visibility === 'private' || args.visibility === 'secret'
           ? args.visibility
           : subject?.kind === 'group'
             ? 'public'
             : 'private'
+      const ownerId = resolveOwnerId(options)
+      if (subject?.kind === 'user' && ownerId.length > 0 && subject.id === ownerId && visibility !== 'secret') {
+        visibility = 'secret'
+      }
       const id = insertDiary(db, {
         sessionId: sessionId ?? null,
         subjectKind: subject?.kind ?? null,
@@ -81,6 +95,7 @@ export function createDiaryWriteTool(db: DatabaseSync) {
         emotion: clamp(args.emotion),
         typeTags: tags,
       })
+      if (subject !== undefined) markDiaryWritten(db, subject)
       return { id }
     },
   })

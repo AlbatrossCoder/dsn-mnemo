@@ -29,7 +29,8 @@ test('rules-only prefix is stable', () => {
   const second = renderStablePrefix([], '2026-11-03')
   assert.equal(first, second)
   assert.match(first, /recall/)
-  assert.match(first, /长期记忆库/)
+  assert.match(first, /你记得和人相处过的事/)
+  assert.doesNotMatch(first, /先用 recall 检索，再回答/)
 })
 
 test('same day and same anchors render byte-identical text', () => {
