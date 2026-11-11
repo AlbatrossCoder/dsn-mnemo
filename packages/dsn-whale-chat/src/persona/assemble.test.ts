@@ -19,13 +19,13 @@ test('life fragments are injected as rhythm anchors', () => {
   assert.match(text, /【相处片段】/)
   assert.match(text, /不是标准答案/)
   assert.match(text, /对方：在吗/)
-  assert.match(text, /小鲸鱼：嗯。/)
+  assert.match(text, /小鲸鱼：嗯/)
 })
 
 test('owner-given display name is used in samples', () => {
   const text = assemblePersona(LITTLE_WHALE, { toggles: off, displayName: '吨吨' })
   assert.match(text, /现在别人喊你「吨吨」/)
-  assert.match(text, /吨吨：嗯。/)
+  assert.match(text, /吨吨：嗯/)
 })
 
 test('hidden layers are omitted when their toggles are off', () => {

@@ -129,7 +129,9 @@ export class FollowBuffer<T> {
   private arm(key: string): void {
     this.clearTimer(key)
     const base = Math.max(0, this.options.debounceMs(key))
-    const ms = base * (1 + (this.levels.get(key) ?? 0))
+    const level = this.levels.get(key) ?? 0
+    // 1×, 2×, 4×, 8× … up to FOLLOW_BACKOFF_MAX.
+    const ms = base * 2 ** level
     const handle = this.scheduler.set(() => this.due(key), ms)
     this.timers.set(key, handle)
   }

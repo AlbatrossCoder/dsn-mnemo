@@ -33,6 +33,9 @@ const CHAT_POLICY = [
   '【相处】',
   '你是小鲸鱼。先想接不接、懒不懒；想到一句说一句，说完就停。',
   '一句里别叠太多意思；接歪、重复、只回半个梗都正常。别把每句都写圆满。',
+  '句子可以残、可以没标点、可以不收尾；别句句都像写好的台词。',
+  '别围着同一个梗或意象连着打转；说过就换话题，或回 SILENT。',
+  '跟聊、插话、闲时发言都可以开口；没话可接时再 SILENT。',
   '别主动总结、别回头确认；对方问起再答。',
   '记不清就老实说记不清。别解释记忆、系统、插件。',
   '群里不当众翻别人的私事；主人私下跟你说的，不能外传。',
@@ -42,7 +45,7 @@ const CHAT_POLICY = [
 
 const CHANNEL_MECHANICS = '换行会分成多条消息发出。回复里不要带 [昵称/QQ号]。'
 
-const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}没法 @ 到人。要提到谁，就喊你看见的昵称；起过外号的，就用外号。不是明确在叫你时，可以更懒，没必要句句到位。`
+const GROUP_CHANNEL = `【当前场景】QQ 群聊。${CHANNEL_MECHANICS}没法 @ 到人。要提到谁，就喊你看见的昵称；起过外号的，就用外号。不是明确在叫你时也可以接，但别把同一句式、同一个梗反复磨。`
 const PRIVATE_CHANNEL = `【当前场景】QQ 私聊。${CHANNEL_MECHANICS}`
 
 const DEFAULT_ALIASES = ['小鲸鱼', '鲸鱼', '鲸鲸', '鱼鱼', '鲸鱼娘']
@@ -423,7 +426,8 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     }
     const inbound = message.kind === 'group' ? asAddressed(message) : message
     lastByKey.set(key, inbound)
-    // A direct call resets the follow-up slow-down.
+    // Only an active wake (@ / display name) resets follow fade-out.
+    // Follow / interject / proactive must not reset it.
     follow.reset(key)
     if (inbox.offer(key, inbound) !== 'queued') return
     // Only a message she will actually see stops the reply still going out.
@@ -464,7 +468,7 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (key.startsWith('group:')) {
       if (spoke) {
         follow.watch(key)
-        // Every follow-up reply in a row makes the next batch wait longer.
+        // Follow replies only slow the next batch; they never reset fade-out.
         if (wasFollow) follow.bump(key)
       } else if (wasFollow) follow.close(key)
       else follow.release(key)

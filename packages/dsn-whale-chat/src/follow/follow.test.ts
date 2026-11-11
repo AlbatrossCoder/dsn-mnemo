@@ -184,7 +184,7 @@ test('each follow-up reply slows the next batch; a direct call resets it', () =>
   assert.equal(jobs[jobs.length - 1]?.delay, 200)
   follow.bump('g')
   follow.offer('g', 3)
-  assert.equal(jobs[jobs.length - 1]?.delay, 300)
+  assert.equal(jobs[jobs.length - 1]?.delay, 400)
   follow.reset('g')
   follow.offer('g', 4)
   assert.equal(jobs[jobs.length - 1]?.delay, 100)

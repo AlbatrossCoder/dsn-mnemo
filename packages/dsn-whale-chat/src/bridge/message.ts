@@ -68,14 +68,20 @@ function toNudgeMessage(message: ChatMessage, instruction: string) {
 }
 
 export function toProactiveMessage(message: ChatMessage) {
-  return toNudgeMessage(message, '（安静了一会儿。不想说就回 SILENT。）')
+  return toNudgeMessage(message, '（安静了一会儿。想说就说一句；不想说就回 SILENT。）')
 }
 
 export function toInterjectMessage(message: ChatMessage, text: string) {
-  return toNudgeMessage(message, `群里刚才有人说：「${text}」。不想接就回 SILENT。`)
+  return toNudgeMessage(
+    message,
+    `群里刚才有人说：「${text}」。想接就接一句；别顺着同一个梗往下编。不想接就回 SILENT。`,
+  )
 }
 
 /** She already spoke; these later lines may continue that topic. Not a chat-log message. */
 export function toFollowMessage(message: ChatMessage, text: string) {
-  return toNudgeMessage(message, `群里刚才还说了这些：\n${text}\n有值得说的就说；没有就回 SILENT。`)
+  return toNudgeMessage(
+    message,
+    `群里刚才还说了这些：\n${text}\n有想说的就说一句；别围着同一个梗/意象连着转。没有就回 SILENT。`,
+  )
 }
