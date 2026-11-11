@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "dsn-whale-chat",
   "version": "0.3.6",
   "description": "Whale-girl QQ chat plugin for DeepSeek Harness: OneBot channel + Soul persona + inbox/outbound queues.",
@@ -69,3 +69,4 @@
     "typescript": "^7.0.2"
   }
 }
+

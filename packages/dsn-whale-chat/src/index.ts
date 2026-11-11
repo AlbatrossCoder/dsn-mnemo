@@ -14,6 +14,7 @@ import { BUILT_IN_PERSONAS, type Persona } from './persona/personas.js'
 import { configFingerprint, createStateStore } from './persona/state.js'
 import { ProactiveScheduler } from './proactive/proactive.js'
 import { FollowBuffer } from './follow/follow.js'
+import { nextTopic, type TopicState } from './follow/topic.js'
 import { Inbox } from './inbox/inbox.js'
 import { BURST_GAP_MS, OutboundQueue, burstSegmentIndex } from './reply/outbound.js'
 import { splitReply, typingDelay } from './reply/split.js'
@@ -258,8 +259,10 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
 
   /** A group turn is in flight (reply, follow, interject, or idle). */
   const groupBusy = new Set<string>()
-  /** This turn was a follow-up look, so silence closes the window. */
+  /** This turn was a follow-up look, so silence declines the topic. */
   const followTurns = new Set<string>()
+  /** The group thread she is following, and whether she already left it. */
+  const topics = new Map<string, TopicState>()
   /** She produced a real reply during the turn that is still finishing. */
   const spokenKeys = new Set<string>()
 
@@ -413,6 +416,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
       // lines stay in the follow window instead of rolling interject.
       if (follow.isOpen(key) || groupBusy.has(key) || inbox.blocksIdle(key)) {
         follow.accept(key)
+        // A topic she left stays quiet until the subject changes.
+        if (nextTopic(topics.get(key), message.text).action === 'drop') {
+          lastByKey.set(key, message)
+          return
+        }
         follow.offer(key, message)
         lastByKey.set(key, message)
         return
@@ -426,9 +434,11 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     }
     const inbound = message.kind === 'group' ? asAddressed(message) : message
     lastByKey.set(key, inbound)
-    // Only an active wake (@ / display name) resets follow fade-out.
-    // Follow / interject / proactive must not reset it.
+    // A direct call is not follow-up. The fade starts over, and a topic she
+    // had left can be talked about again because someone called her.
     follow.reset(key)
+    const seen = topics.get(key)
+    if (seen !== undefined) topics.set(key, { text: seen.text, declined: false })
     if (inbox.offer(key, inbound) !== 'queued') return
     // Only a message she will actually see stops the reply still going out.
     if (cancelPendingSend(key)) pendingInterrupts.set(key, ++interruptSerial)
@@ -440,6 +450,9 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   function flush(key: string, messages: readonly ChatMessage[], _status: string): void {
     const last = messages[messages.length - 1]
     if (last === undefined) return
+    if (key.startsWith('group:')) {
+      topics.set(key, { text: messages.map((message) => message.text).join('\n'), declined: false })
+    }
     beginTurn(key)
     void bridge
       .receive({ ...last, text: messages.map((message) => speakerTag(message)).join('\n') })
@@ -449,10 +462,21 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
   function flushFollow(key: string, messages: readonly ChatMessage[]): void {
     const last = messages[messages.length - 1]
     if (last === undefined) return
+    const body = messages.map((message) => message.text).join('\n')
+    const look = nextTopic(topics.get(key), body)
+    if (look.action === 'drop') {
+      follow.discard(key)
+      return
+    }
     beginTurn(key)
     followTurns.add(key)
+    topics.set(key, { text: look.text, declined: false })
     void bridge
-      .follow(last, messages.map((message) => speakerTag(message)).join('\n'))
+      .follow(last, {
+        transcript: messages.map((message) => speakerTag(message)).join('\n'),
+        relation: look.relation,
+        level: follow.levelOf(key),
+      })
       .catch((error) => recordError(error))
   }
 
@@ -468,10 +492,17 @@ export function apply(ctx: Context, config: WhaleChatConfig): void {
     if (key.startsWith('group:')) {
       if (spoke) {
         follow.watch(key)
-        // Follow replies only slow the next batch; they never reset fade-out.
+        // Every follow-up reply in a row makes the next batch wait longer.
+        // Idle speech and a random interject do not clear a thread she left,
+        // and they do not reset the fade. Only a direct call does that.
         if (wasFollow) follow.bump(key)
-      } else if (wasFollow) follow.close(key)
-      else follow.release(key)
+      } else if (wasFollow) {
+        // She left this thread. Keep watching: a new subject is still follow-up,
+        // and the fade does not start over.
+        follow.discard(key)
+        const topic = topics.get(key)
+        if (topic !== undefined) topics.set(key, { text: topic.text, declined: true })
+      } else follow.release(key)
     }
     const pending = pendingInterrupts.get(key)
     const shown = shownInterrupts.get(key)

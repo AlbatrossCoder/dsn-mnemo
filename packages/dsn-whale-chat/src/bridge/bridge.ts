@@ -3,7 +3,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import type { ChatMessage } from '../channel/types.js'
-import { conversationKey, toFollowMessage, toInterjectMessage, toProactiveMessage, toUserMessage } from './message.js'
+import {
+  conversationKey,
+  toFollowMessage,
+  toInterjectMessage,
+  toProactiveMessage,
+  toUserMessage,
+  type FollowCue,
+} from './message.js'
 import { assistantText } from './reply.js'
 
 export interface BridgeOptions {
@@ -79,11 +86,11 @@ export class ChatBridge {
   }
 
   /** Wake the agent to consider continuing a group topic it already joined. */
-  async follow(target: ChatMessage, text: string): Promise<void> {
+  async follow(target: ChatMessage, cue: FollowCue): Promise<void> {
     const key = conversationKey(target)
     const agent = await this.agentFor(key)
     this.conversations.set(agent.session.id, target)
-    agent.followup(toFollowMessage(target, text))
+    agent.followup(toFollowMessage(target, cue))
   }
 
   /** Wake the agent to consider joining a group message it was not addressed in. */
