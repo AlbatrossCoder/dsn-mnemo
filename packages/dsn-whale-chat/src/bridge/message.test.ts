@@ -37,9 +37,26 @@ test('toUserMessage carries QQ identity and text', () => {
 })
 
 test('toFollowMessage is a nudge and not a stored chat line', () => {
-  const message = toFollowMessage(group(), '[小明/2000] 然后呢')
+  const message = toFollowMessage(group(), { transcript: '[小明/2000] 然后呢', relation: 'same', level: 0 })
   assert.equal(message.source.kind, 'qq-proactive')
   assert.equal(message.source.groupId, '3000')
-  assert.match(message.content[0]?.text ?? '', /然后呢/)
-  assert.match(message.content[0]?.text ?? '', /SILENT/)
+  const text = message.content[0]?.text ?? ''
+  assert.match(text, /然后呢/)
+  assert.match(text, /SILENT/)
+  assert.match(text, /刚接过话/)
+  assert.match(text, /刚才那件事/)
+})
+
+test('a faded follow-up says the thread has cooled', () => {
+  const message = toFollowMessage(group(), { transcript: '[小明/2000] 火锅几个人', relation: 'same', level: 2 })
+  const text = message.content[0]?.text ?? ''
+  assert.match(text, /这条线淡了/)
+  assert.match(text, /刚才那件事/)
+})
+
+test('a new subject stays inside the fade', () => {
+  const message = toFollowMessage(group(), { transcript: '[小明/2000] 今天天气真好', relation: 'new', level: 1 })
+  const text = message.content[0]?.text ?? ''
+  assert.match(text, /话头在淡/)
+  assert.match(text, /淡出不重置/)
 })

@@ -2,8 +2,10 @@
  * Messages she keeps an eye on after she has actually spoken in a group.
  *
  * They are not the inbound list. A batch is at most {@link FOLLOW_LIMIT}
- * lines, debounced, and only handed over once she has spoken. If she stays
- * quiet on that batch, the caller closes the window and the lines are dropped.
+ * lines, debounced, and only handed over once she has spoken. Each follow-up
+ * she actually answers slows the next batch. Staying quiet drops the batch
+ * but leaves the watch and the slow-down in place, so a later change of
+ * subject can still be followed. A direct call resets the slow-down.
  */
 import { realScheduler, type Scheduler } from '../util/scheduler.js'
 
@@ -68,7 +70,17 @@ export class FollowBuffer<T> {
     this.close(key)
   }
 
-  /** The topic moved on. Drop anything she did not answer. */
+  /**
+   * Drop lines she is not going to answer. The watch and the fade stay, so a
+   * later change of subject is still a follow-up.
+   */
+  discard(key: string): void {
+    this.waiting.delete(key)
+    this.held.delete(key)
+    this.clearTimer(key)
+  }
+
+  /** Stop watching this group and clear the fade. */
   close(key: string): void {
     this.open.delete(key)
     this.sticky.delete(key)

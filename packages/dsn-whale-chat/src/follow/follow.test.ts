@@ -125,6 +125,27 @@ test('silence before she has ever spoken drops the lines', () => {
   assert.equal(follow.isOpen('g'), false)
 })
 
+test('discard drops the batch and keeps the watch and the fade', () => {
+  const { scheduler, jobs, run } = fakeScheduler()
+  const flushed: number[][] = []
+  const follow = new FollowBuffer<number>({
+    debounceMs: () => 100,
+    isBusy: () => false,
+    scheduler,
+    onFlush: (_key, messages) => flushed.push([...messages]),
+  })
+  follow.watch('g')
+  follow.bump('g')
+  follow.offer('g', 1)
+  follow.discard('g')
+  assert.equal(follow.isWatching('g'), true)
+  assert.equal(follow.levelOf('g'), 1)
+  assert.equal(jobs.length, 0)
+  follow.offer('g', 2)
+  run(0)
+  assert.deepEqual(flushed, [[2]])
+})
+
 test('silence on a follow batch closes the window and drops what is left', () => {
   const { scheduler } = fakeScheduler()
   const follow = new FollowBuffer<number>({

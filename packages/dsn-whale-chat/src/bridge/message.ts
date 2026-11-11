@@ -66,7 +66,37 @@ export function toInterjectMessage(message: ChatMessage, text: string) {
   return toNudgeMessage(message, `群里刚才有人说：「${text}」。不想接就回 SILENT。`)
 }
 
-/** She already spoke; these later lines may continue that topic. Not a chat-log message. */
-export function toFollowMessage(message: ChatMessage, text: string) {
-  return toNudgeMessage(message, `群里刚才还说了这些：\n${text}\n有值得说的就说；没有就回 SILENT。`)
+/** What this follow-up batch is, relative to the thread she was already on. */
+export interface FollowCue {
+  /** Lines the group just said, already tagged with speaker. */
+  readonly transcript: string
+  /** `new` does not reset the fade. Only a direct call does that. */
+  readonly relation: 'same' | 'new'
+  /** How many follow-up replies she has already made. `0` means she just joined. */
+  readonly level: number
+}
+
+function fadeLine(level: number): string {
+  if (level <= 0) return '你刚接过话。'
+  if (level === 1) return '你已经顺着接过一次，话头在淡。'
+  return '你已经跟了几轮，这条线淡了。多半不用接，除非真的扯到你。'
+}
+
+function threadLine(relation: 'same' | 'new'): string {
+  if (relation === 'new') return '群里换了一件事。这仍是跟聊，淡出不重置。'
+  return '还是刚才那件事。'
+}
+
+/**
+ * She already spoke; these later lines may continue that topic.
+ * Not a chat-log message. She decides from the cue whether to answer.
+ */
+export function toFollowMessage(message: ChatMessage, cue: FollowCue) {
+  const text = [
+    '群里刚才还说了这些：',
+    cue.transcript,
+    `${fadeLine(cue.level)}${threadLine(cue.relation)}`,
+    '没人叫你。按你自己的性子决定接不接：想说就说，不想把这件事续下去就回 SILENT。你停过的话题，别人没换说法、也没叫你，就别绕回去。',
+  ].join('\n')
+  return toNudgeMessage(message, text)
 }
